@@ -20,30 +20,26 @@ export async function POST() {
       )
     `)
 
-    // Horarios por día de la semana
+    // Reglas de horario (reemplaza business_hours por día)
     await client.query(`
-      CREATE TABLE IF NOT EXISTS business_hours (
+      CREATE TABLE IF NOT EXISTS business_hour_rules (
         id SERIAL PRIMARY KEY,
-        day_of_week INTEGER NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),
-        is_open BOOLEAN DEFAULT TRUE,
-        start_time TIME,
-        end_time TIME,
+        start_time TIME NOT NULL,
+        end_time TIME NOT NULL,
         lunch_start TIME,
         lunch_end TIME,
-        UNIQUE (day_of_week)
+        days TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW()
       )
     `)
 
-    // Insertar horarios por defecto si la tabla está vacía
-    const existing = await client.query('SELECT COUNT(*) FROM business_hours')
+    // Insertar regla por defecto si la tabla está vacía
+    const existing = await client.query('SELECT COUNT(*) FROM business_hour_rules')
     if (parseInt(existing.rows[0].count) === 0) {
-      for (let day = 0; day <= 6; day++) {
-        const isWeekend = day === 0 || day === 6
-        await client.query(`
-          INSERT INTO business_hours (day_of_week, is_open, start_time, end_time, lunch_start, lunch_end)
-          VALUES ($1, $2, $3, $4, $5, $6)
-        `, [day, !isWeekend, '09:00', '20:00', null, null])
-      }
+      await client.query(`
+        INSERT INTO business_hour_rules (start_time, end_time, lunch_start, lunch_end, days)
+        VALUES ('09:00', '20:00', NULL, NULL, '1,2,3,4,5')
+      `)
     }
 
     // Tabla de documentos RAG
