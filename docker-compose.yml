@@ -3,7 +3,7 @@ services:
     build: .
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "3150:3000"
     environment:
       DATABASE_URL: ${DATABASE_URL}
       SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL}
