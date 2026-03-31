@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -m json.tool)",
+      "mcp__postgres-fisio__query",
+      "Bash(npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --no-git)",
+      "Bash(npx create-next-app@latest fisio-panel --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --no-git)",
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "Bash(mv next.config.ts next.config.mjs)",
+      "Bash(sed -i 's/import type { NextConfig } from .next.//;s/const nextConfig: NextConfig = /const nextConfig = /;s/export default nextConfig/export default nextConfig/' next.config.mjs)",
+      "Bash(curl -s -X POST http://localhost:3000/api/migrate)",
+      "Bash(gh auth:*)"
+    ]
+  }
+}

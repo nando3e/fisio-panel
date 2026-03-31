@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+
+# Env files - NUNCA subir
+.env
+.env.local
+.env.*.local
+
+# Uploads
+uploads/
+
+# Misc
+.DS_Store
+*.pem
+npm-debug.log*
