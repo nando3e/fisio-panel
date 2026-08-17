@@ -74,7 +74,7 @@ Una única aplicación Compose en Dokploy: repo `nando3e/fisio-panel`, rama `mai
 
 Los ficheros `.env` locales **no se suben** (están en `.gitignore`): son solo para desarrollo en tu máquina. En producción, todas las variables van juntas en el apartado **Environment** de esa única app (las compartidas —`DATABASE_URL`, `EMBEDDINGS_*`, `ADMIN_TOKEN`— se escriben una sola vez; el compose las reparte).
 
-Variables de la app única = las del bot + las del panel (`SUPERADMIN_*`, `JWT_SECRET`) + `PANEL_PORT=3160` mientras el panel viejo ocupe el 3150. `BOT_ADMIN_TOKEN` ya no existe: el compose pasa `ADMIN_TOKEN` a los dos servicios.
+Variables de la app única = las del bot + las del panel (`SUPERADMIN_*`, `JWT_SECRET`). `BOT_ADMIN_TOKEN` ya no existe: el compose pasa `ADMIN_TOKEN` a los dos servicios.
 
 Dominios de la misma app: `bot.citas.… → service bot, puerto 3000` y `panel.citas.… → service app, puerto 3000`.
 

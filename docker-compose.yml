@@ -7,9 +7,8 @@ services:
     build: .
     hostname: fisio-panel
     restart: unless-stopped
-    # El panel viejo ocupa el 3150 hasta su retirada; con dominio Traefik el puerto ni hace falta.
-    ports:
-      - "${PANEL_PORT:-3150}:3000"
+    # Sin puertos publicados: el panel entra SOLO por su dominio (Traefik). El firewall
+    # bloquea igualmente los puertos altos, y así no puede chocar nunca con el panel viejo.
     environment:
       DATABASE_URL: ${DATABASE_URL}
       SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL}
