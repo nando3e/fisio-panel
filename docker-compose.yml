@@ -4,8 +4,10 @@ services:
   app:
     build: .
     restart: unless-stopped
+    # Parametrizado: el panel viejo ocupa el 3150 hasta su retirada.
+    # En Dokploy define PANEL_PORT=3160 (o quita ports y entra solo por dominio/Traefik).
     ports:
-      - "3150:3000"
+      - "${PANEL_PORT:-3150}:3000"
     environment:
       DATABASE_URL: ${DATABASE_URL}
       SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL}
