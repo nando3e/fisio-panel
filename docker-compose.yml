@@ -1,11 +1,13 @@
-# Panel (app 1 del repo). El bot es la app 2: compose propio en bot/docker-compose.yml.
-# Ambos en el proyecto Dokploy CITAS, sobre dokploy-network (Traefik + hostnames internos).
+# Panel + Bot en UN solo servicio de Dokploy (Compose Path: ./docker-compose.yml).
+# Despliegue atómico: ambos salen siempre del mismo commit, y las migraciones que
+# ejecuta el bot al arrancar nunca se desincronizan del panel que lee ese esquema.
+# Dominios en Dokploy: panel.… → service app :3000 · bot.… → service bot :3000
 services:
   app:
     build: .
+    hostname: fisio-panel
     restart: unless-stopped
-    # Parametrizado: el panel viejo ocupa el 3150 hasta su retirada.
-    # En Dokploy define PANEL_PORT=3160 (o quita ports y entra solo por dominio/Traefik).
+    # El panel viejo ocupa el 3150 hasta su retirada; con dominio Traefik el puerto ni hace falta.
     ports:
       - "${PANEL_PORT:-3150}:3000"
     environment:
@@ -17,12 +19,47 @@ services:
       EMBEDDINGS_API_URL: ${EMBEDDINGS_API_URL}
       EMBEDDINGS_API_KEY: ${EMBEDDINGS_API_KEY}
       EMBEDDINGS_MODEL: ${EMBEDDINGS_MODEL}
-      BOT_URL: ${BOT_URL}
-      BOT_ADMIN_TOKEN: ${BOT_ADMIN_TOKEN}
+      BOT_URL: http://fisio-bot:3000
+      BOT_ADMIN_TOKEN: ${ADMIN_TOKEN}   # el mismo token que el bot: un solo secreto
     volumes:
       - uploads:/app/uploads
     networks:
-      - dokploy-network
+      dokploy-network:
+        aliases: [fisio-panel]
+
+  bot:
+    build: ./bot
+    hostname: fisio-bot
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      DATABASE_URL: ${DATABASE_URL}
+      LLM_PROVIDER: ${LLM_PROVIDER}
+      LLM_MODEL: ${LLM_MODEL}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      EMBEDDINGS_API_URL: ${EMBEDDINGS_API_URL}
+      EMBEDDINGS_API_KEY: ${EMBEDDINGS_API_KEY}
+      EMBEDDINGS_MODEL: ${EMBEDDINGS_MODEL}
+      # Ruta al fichero, o el JSON entero en UNA línea (en Dokploy, lo segundo)
+      GOOGLE_SERVICE_ACCOUNT: ${GOOGLE_SERVICE_ACCOUNT}
+      CHATWOOT_URL: ${CHATWOOT_URL}
+      CHATWOOT_ACCOUNT_ID: ${CHATWOOT_ACCOUNT_ID}
+      CHATWOOT_TOKEN: ${CHATWOOT_TOKEN}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET}
+      EVOLUTION_URL: ${EVOLUTION_URL}
+      EVOLUTION_INSTANCE: ${EVOLUTION_INSTANCE}
+      EVOLUTION_TOKEN: ${EVOLUTION_TOKEN}
+      STT_URL: ${STT_URL}
+      STT_API_KEY: ${STT_API_KEY}
+      STT_MODEL: ${STT_MODEL}
+      ADMIN_TOKEN: ${ADMIN_TOKEN}
+      DRY_RUN: ${DRY_RUN:-true}
+      RECORDATORIOS_DRY_RUN: ${RECORDATORIOS_DRY_RUN:-true}
+    networks:
+      dokploy-network:
+        # Alias DNS estable: BOT_URL y el webhook interno siempre encuentran http://fisio-bot:3000
+        aliases: [fisio-bot]
 
 volumes:
   uploads:

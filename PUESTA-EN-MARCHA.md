@@ -68,16 +68,15 @@ Las tres variables, sin confusión (Evolution llama "apikey" a dos cosas distint
 
 Necesitas también un **token de acceso de Chatwoot** (Perfil → Access Token) para `CHATWOOT_TOKEN`.
 
-## 5. Envs y despliegue de las dos apps
+## 5. Envs y despliegue: UNA sola app con panel + bot
 
-Dos aplicaciones en Dokploy, mismo repositorio:
+Una única aplicación Compose en Dokploy: repo `nando3e/fisio-panel`, rama `main`, Compose Path **`./docker-compose.yml`** — que define los dos servicios (`app` = panel, `bot` = bot). Despliegue atómico: los dos salen siempre del mismo commit, y las migraciones que el bot ejecuta al arrancar nunca se desincronizan del panel que lee ese esquema. El precio asumido: cada deploy reinicia también el bot (~10 s; un turno en vuelo puede perderse — aceptable a esta escala).
 
-| App | Build path | Compose |
-|---|---|---|
-| Panel | raíz | `docker-compose.yml` |
-| Bot | `/bot` | `bot/docker-compose.yml` |
+Los ficheros `.env` locales **no se suben** (están en `.gitignore`): son solo para desarrollo en tu máquina. En producción, todas las variables van juntas en el apartado **Environment** de esa única app (las compartidas —`DATABASE_URL`, `EMBEDDINGS_*`, `ADMIN_TOKEN`— se escriben una sola vez; el compose las reparte).
 
-Los ficheros `.env` locales **no se suben** (están en `.gitignore`): son solo para desarrollo en tu máquina. En producción, cada variable se pega en el apartado **Environment** de su aplicación en Dokploy.
+Variables de la app única = las del bot + las del panel (`SUPERADMIN_*`, `JWT_SECRET`) + `PANEL_PORT=3160` mientras el panel viejo ocupe el 3150. `BOT_ADMIN_TOKEN` ya no existe: el compose pasa `ADMIN_TOKEN` a los dos servicios.
+
+Dominios de la misma app: `bot.citas.… → service bot, puerto 3000` y `panel.citas.… → service app, puerto 3000`.
 
 Dos diferencias entre local y Dokploy, y son la fuente habitual de errores:
 
@@ -130,13 +129,15 @@ El bot aplica migraciones y semilla al arrancar: no hay paso manual.
 
 ## 6. Webhook de Chatwoot → bot
 
-En el inbox de Chatwoot, añade el webhook con el evento **`message_created`** apuntando a:
+Chatwoot valida la URL del webhook y no acepta hostnames internos sin dominio, así que el bot necesita un dominio público: en Dokploy, app del bot → **Domains** → añade `bot.citas.rbimprove.app` (puerto 3000, HTTPS con Let's Encrypt), con su registro DNS apuntando a la IP del VPS si no hay comodín.
+
+Después, en Chatwoot (**Configuración → Integraciones → Webhooks**), añade el webhook con SOLO el evento **`message_created`**:
 
 ```
-http://<app-bot>:3000/webhook/chatwoot/<WEBHOOK_SECRET>
+https://bot.citas.rbimprove.app/webhook/chatwoot/<WEBHOOK_SECRET>
 ```
 
-El secreto en la ruta es la única barrera: Chatwoot no firma sus webhooks. Que sea largo y aleatorio.
+El secreto en la ruta es la barrera (Chatwoot no firma sus webhooks): sin él, el bot responde 404. Exponer el dominio es seguro — /admin exige token y /salud no revela nada — y permite verificar el despliegue desde fuera.
 
 ## 7. Verificación antes del cutover
 
