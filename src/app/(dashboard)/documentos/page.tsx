@@ -1,13 +1,17 @@
 'use client'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { toast } from '@/components/ui/use-toast'
-import { Upload, FileText, Trash2, Loader2, File } from 'lucide-react'
+import { Upload, FileText, Trash2, Loader2, RefreshCw } from 'lucide-react'
 
-interface Doc { id: number; original_name: string; size: number; mimetype: string; uploaded_by: string; created_at: string }
+interface Doc {
+  id: number; original_name: string; size: number; mimetype: string
+  uploaded_by: string; created_at: string
+  chunks_count: number | null; ingest_error: string | null
+}
 
 function formatSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`
@@ -30,6 +34,9 @@ export default function DocumentosPage() {
   const [docs, setDocs] = useState<Doc[]>([])
   const [uploading, setUploading] = useState(false)
   const [deleting, setDeleting] = useState<number | null>(null)
+  const [replacing, setReplacing] = useState<number | null>(null)
+  const replaceIdRef = useRef<number | null>(null)
+  const replaceInputRef = useRef<HTMLInputElement>(null)
 
   async function load() {
     const res = await fetch('/api/documents')
@@ -79,8 +86,49 @@ export default function DocumentosPage() {
     }
   }
 
+  function pedirReemplazo(id: number) {
+    replaceIdRef.current = id
+    replaceInputRef.current?.click()
+  }
+
+  async function reemplazar(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    const id = replaceIdRef.current
+    replaceIdRef.current = null
+    if (!file || id == null) return
+
+    setReplacing(id)
+    try {
+      const formData = new FormData()
+      formData.append('id', String(id))
+      formData.append('file', file)
+      const res = await fetch('/api/documents', { method: 'PUT', body: formData })
+      if (res.ok) {
+        toast({ title: 'Documento reemplazado y reindexado' })
+      } else {
+        const err = await res.json().catch(() => null)
+        toast({
+          title: 'No se pudo reemplazar',
+          description: err?.error || 'La ingesta falló: el documento anterior sigue vigente.',
+          variant: 'destructive',
+        })
+      }
+      load()
+    } finally {
+      setReplacing(null)
+    }
+  }
+
   return (
     <div className="p-6 md:p-8 space-y-6 max-w-4xl mx-auto">
+      <input
+        ref={replaceInputRef}
+        type="file"
+        accept=".pdf,.txt,.doc,.docx,.md"
+        className="hidden"
+        onChange={reemplazar}
+      />
       <div>
         <h1 className="text-2xl font-bold">Documentos RAG</h1>
         <p className="text-muted-foreground text-sm">Sube documentos para dar contexto al asistente de IA</p>
@@ -138,7 +186,18 @@ export default function DocumentosPage() {
                 <div key={doc.id} className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/30 transition-colors group">
                   <div className="text-2xl shrink-0">{fileIcon(doc.mimetype)}</div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{doc.original_name}</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm font-medium truncate">{doc.original_name}</p>
+                      {doc.ingest_error ? (
+                        <Badge variant="destructive" className="max-w-[260px] truncate" title={doc.ingest_error}>
+                          Error de indexado: {doc.ingest_error}
+                        </Badge>
+                      ) : (
+                        <Badge variant="success">
+                          {doc.chunks_count ?? 0} fragmento{(doc.chunks_count ?? 0) !== 1 ? 's' : ''} indexado{(doc.chunks_count ?? 0) !== 1 ? 's' : ''}
+                        </Badge>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className="text-xs text-muted-foreground">{formatSize(doc.size)}</span>
                       <span className="text-xs text-muted-foreground">·</span>
@@ -147,6 +206,15 @@ export default function DocumentosPage() {
                       <span className="text-xs text-muted-foreground">{doc.uploaded_by}</span>
                     </div>
                   </div>
+                  <Button
+                    variant="outline" size="sm"
+                    className="shrink-0"
+                    onClick={() => pedirReemplazo(doc.id)}
+                    disabled={replacing === doc.id}
+                  >
+                    {replacing === doc.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                    Reemplazar
+                  </Button>
                   <Button
                     variant="ghost" size="icon"
                     className="h-8 w-8 text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-destructive transition-all"

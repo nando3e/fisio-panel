@@ -1,0 +1,31 @@
+{
+  "name": "fisio-bot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bot de citas WhatsApp para clínica de fisioterapia (Evolution + Chatwoot + Google Calendar)",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "test": "node --import tsx --test \"test/**/*.test.ts\"",
+    "banco": "tsx banco/flujo-reserva.ts",
+    "banco:prompt": "tsx banco/prompt-real.ts",
+    "doctor": "tsx src/doctor.ts",
+    "migrate": "tsx src/db/migrate.ts",
+    "seed": "tsx src/db/seed.ts",
+    "importar": "tsx src/db/importar.ts"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.68.0",
+    "fastify": "^5.2.0",
+    "googleapis": "^144.0.0",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/pg": "^8.11",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

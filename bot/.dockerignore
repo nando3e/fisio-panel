@@ -1,0 +1,16 @@
+node_modules
+dist
+*.log
+test
+banco
+
+# Secretos: NUNCA dentro de la imagen (los envs los inyecta Dokploy en runtime)
+.env
+.env.*
+!.env.example
+*serviceaccount*.json
+*PEGAR-EN-DOKPLOY*
+sa-base64*
+sa-una-linea*
+*.pem
+*.key

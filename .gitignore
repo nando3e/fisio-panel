@@ -9,6 +9,12 @@ out/
 .env
 .env.local
 .env.*.local
+.mcp.json
+bot/.env
+
+# Claude Code local
+.claude/settings.local.json
+.codex/
 
 # Uploads
 uploads/
@@ -17,3 +23,11 @@ uploads/
 .DS_Store
 *.pem
 npm-debug.log*
+
+# otros
+*serviceaccount.json
+
+# Secretos locales preparados para pegar en Dokploy (NUNCA a git)
+*PEGAR-EN-DOKPLOY*
+*.secreto.txt
+sa-base64*

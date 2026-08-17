@@ -1,0 +1,15 @@
+schema: spec-driven
+
+context: |
+  Monorepo de la clínica de fisioterapia: panel de administración Next.js 14 (raíz)
+  + servicio de bot de citas WhatsApp en /bot (Node >= 20, TypeScript, Fastify, pg, SDK del LLM).
+  Base de datos única: Postgres `fisio1` (imagen pgvector/pgvector:pg14) en el stack Dokploy CITAS.
+  Cadena de mensajería: WhatsApp -> Evolution API (instancia propia) -> Chatwoot -> bot.
+  Ocupación de agenda: Google Calendar (un calendario por fisio + calendario blocker "cierres").
+  Proyectos de referencia: C:\Users\nando\APPS\balta (motor de slots, gestión de citas,
+  recordatorios, gateway) y C:\Users\nando\APPS\nubimed (continuidad, identificación de
+  pacientes, catálogo servicio-profesional). Guía de arquitectura: C:\Users\nando\APPS\PLANTILLA-CHATBOT.md.
+  Convenciones: un solo agente con todas las tools (sin router de intenciones); reglas duras
+  en el ejecutor, nunca solo en el prompt; escrituras en dos pasos (proponer/confirmar);
+  config de negocio en BD editable en caliente, credenciales en env; calcular en código,
+  copiar en el modelo; tests con node:test sin red + banco contra el modelo real.

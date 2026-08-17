@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import {
-  Activity, LayoutDashboard, Settings, FileText, Users, LogOut, Moon, Sun, Bot, Menu, X
+  Activity, LayoutDashboard, Settings, FileText, Users, LogOut, Moon, Sun, Bot, Menu, X, ContactRound
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { Button } from './ui/button'
@@ -18,6 +18,8 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/pacientes', label: 'Pacientes', icon: ContactRound },
+  { href: '/bot', label: 'Bot', icon: Bot },
   { href: '/configuracion', label: 'Configuración', icon: Settings },
   { href: '/documentos', label: 'Documentos RAG', icon: FileText },
   { href: '/usuarios', label: 'Usuarios', icon: Users, superadminOnly: true },

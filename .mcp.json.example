@@ -7,7 +7,7 @@
         "npx",
         "-y",
         "@modelcontextprotocol/server-postgres",
-        "postgresql://citas_admin:citas_Postgres_2025_SecureX7k@91.99.128.20:5404/chatbot"
+        "postgresql://USUARIO:PASSWORD@HOST:PUERTO/BASE"
       ]
     }
   }

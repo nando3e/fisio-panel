@@ -1,0 +1,202 @@
+# Stack CITAS (los "6 básicos"): postgres + redis + chatwoot (rails/sidekiq) + n8n + qdrant + evolution
+# Cambios respecto a la versión anterior de 5 servicios:
+#  - postgres se une a dokploy-network para que panel y bot (composes aparte) lleguen por hostname interno
+#  - init-db crea también fisio1 (bot+panel) y evolution (instancia propia de Evolution API)
+#  - servicio evolution nuevo (instancia dedicada de este cliente)
+# NOTA: el init-db solo corre en el PRIMER arranque del volumen; en un volumen ya inicializado
+# las bases nuevas se crean a mano (CREATE DATABASE fisio1; CREATE DATABASE evolution;)
+
+name: ${CLIENT_KEY}
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg14
+    hostname: ${CLIENT_KEY}-postgres
+    container_name: ${CLIENT_KEY}-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USERNAME}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DATABASE}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    command: >
+      bash -c "
+        echo 'CREATE DATABASE n8n; CREATE DATABASE chatbot; CREATE DATABASE client_rag; CREATE DATABASE fisio1; CREATE DATABASE evolution;' > /docker-entrypoint-initdb.d/init-db.sql
+        docker-entrypoint.sh postgres
+      "
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $POSTGRES_USERNAME -d $POSTGRES_DATABASE"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    restart: always
+    ports:
+      - "${POSTGRES_EXTERNAL_PORT}:5432"   # solo desarrollo; restringir por firewall a la IP de administración
+    networks:
+      - chatbot-network
+      - dokploy-network
+
+  redis:
+    image: redis:alpine
+    hostname: ${CLIENT_KEY}-redis
+    container_name: ${CLIENT_KEY}-redis
+    command: ["sh", "-c", 'redis-server --requirepass "$REDIS_PASSWORD"']
+    volumes:
+      - redis:/data
+    restart: always
+    networks:
+      - chatbot-network
+
+  rails:
+    image: chatwoot/chatwoot:v3.16.0
+    hostname: ${CLIENT_KEY}-chatwoot
+    container_name: ${CLIENT_KEY}-chatwoot
+    entrypoint: docker/entrypoints/rails.sh
+    command:
+      - "bundle"
+      - "exec"
+      - "sh"
+      - "-c"
+      - "bundle exec rails db:chatwoot_prepare && bundle exec rails s -p 3000 -b 0.0.0.0"
+    volumes:
+      - chatwoot:/app/storage
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment: &chatwoot_env
+      FRONTEND_URL: ${CHATWOOT_URL}
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE}
+      RAILS_ENV: ${RAILS_ENV}
+      NODE_ENV: ${NODE_ENV}
+      INSTALLATION_ENV: ${INSTALLATION_ENV}
+      RAILS_LOG_TO_STDOUT: ${RAILS_LOG_TO_STDOUT}
+      LOG_LEVEL: ${LOG_LEVEL}
+      DEFAULT_LOCALE: ${DEFAULT_LOCALE}
+      POSTGRES_HOST: ${CLIENT_KEY}-postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DATABASE: ${POSTGRES_DATABASE}
+      POSTGRES_USERNAME: ${POSTGRES_USERNAME}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@${CLIENT_KEY}-redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      FORCE_SSL: ${FORCE_SSL}
+      ENABLE_ACCOUNT_SIGNUP: ${ENABLE_ACCOUNT_SIGNUP}
+      ACTIVE_STORAGE_SERVICE: ${ACTIVE_STORAGE_SERVICE}
+      RAILS_SERVE_STATIC_FILES: ${RAILS_SERVE_STATIC_FILES}
+      MAILER_SENDER_EMAIL: ${MAILER_SENDER_EMAIL}
+      SMTP_ADDRESS: ${SMTP_ADDRESS}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USERNAME: ${SMTP_USERNAME}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_DOMAIN: ${SMTP_DOMAIN}
+      SMTP_AUTHENTICATION: ${SMTP_AUTHENTICATION}
+      SMTP_ENABLE_STARTTLS_AUTO: ${SMTP_ENABLE_STARTTLS_AUTO}
+      SMTP_OPENSSL_VERIFY_MODE: ${SMTP_OPENSSL_VERIFY_MODE}
+      MAILER_INBOUND_EMAIL_DOMAIN: ${MAILER_INBOUND_EMAIL_DOMAIN}
+      RAILS_MAILER_DELIVERY_METHOD: smtp
+    networks:
+      - chatbot-network
+      - dokploy-network
+
+  sidekiq:
+    image: chatwoot/chatwoot:v3.16.0
+    hostname: ${CLIENT_KEY}-sidekiq
+    container_name: ${CLIENT_KEY}-sidekiq
+    command: ["bundle", "exec", "sidekiq", "-C", "config/sidekiq.yml"]
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment: *chatwoot_env
+    volumes:
+      - chatwoot:/app/storage
+    networks:
+      - chatbot-network
+
+  n8n:
+    image: n8nio/n8n:1.76.1
+    hostname: ${CLIENT_KEY}-n8n
+    container_name: ${CLIENT_KEY}-n8n
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: ${CLIENT_KEY}-postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: n8n
+      DB_POSTGRESDB_USER: ${POSTGRES_USERNAME}
+      DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD}
+      GENERIC_TIMEZONE: Europe/Madrid
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+      N8N_HOST: ${N8N_HOST}
+      N8N_PROTOCOL: ${N8N_PROTOCOL}
+      VUE_APP_URL_BASE_API: ${VUE_APP_URL_BASE_API}
+      WEBHOOK_URL: ${WEBHOOK_URL}
+      N8N_PUSH_BACKEND: websocket
+      N8N_METRICS: "false"
+    volumes:
+      - n8n:/home/node/.n8n
+    restart: always
+    networks:
+      - chatbot-network
+      - dokploy-network
+
+  qdrant:
+    image: qdrant/qdrant:v1.13.4
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_TOKEN}
+    hostname: ${CLIENT_KEY}-qdrant
+    container_name: ${CLIENT_KEY}-qdrant
+    volumes:
+      - qdrant:/qdrant/storage
+    restart: always
+    networks:
+      - chatbot-network
+
+  evolution:
+    image: atendai/evolution-api:v2.2.3
+    hostname: ${CLIENT_KEY}-evolution
+    container_name: ${CLIENT_KEY}-evolution
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      SERVER_URL: ${EVOLUTION_URL}
+      AUTHENTICATION_API_KEY: ${EVOLUTION_TOKEN}
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://${POSTGRES_USERNAME}:${POSTGRES_PASSWORD}@${CLIENT_KEY}-postgres:5432/evolution
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://:${REDIS_PASSWORD}@${CLIENT_KEY}-redis:6379/6
+      CACHE_REDIS_PREFIX_KEY: evolution
+      CONFIG_SESSION_PHONE_CLIENT: ${NOMBRE_NEGOCIO}
+      LANGUAGE: es
+    volumes:
+      - evolution:/evolution/instances
+    restart: always
+    networks:
+      - chatbot-network
+      - dokploy-network
+
+volumes:
+  chatwoot:
+  postgres:
+  redis:
+  n8n:
+  qdrant:
+  evolution:
+
+networks:
+  chatbot-network:
+    driver: bridge
+  dokploy-network:
+    external: true

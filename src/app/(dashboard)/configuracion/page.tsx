@@ -19,6 +19,16 @@ interface HourRule {
 interface Service { id: number; name: string; code: string; slots_required: number; active: boolean }
 interface Professional { id: number; name: string; calendar_id: string; active: boolean; is_blocker: boolean }
 interface General { slot_minutes: string; day_start_time: string; day_end_time: string; timezone: string; telefono: string }
+interface ProRule {
+  id: number; professional_id: number; start_time: string; end_time: string
+  lunch_start: string | null; lunch_end: string | null; days: string
+}
+interface Ventana { desde: string; hasta: string }
+interface ProException {
+  id: number; fecha: string; hasta: string | null; tipo: string
+  ventanas: Ventana[] | null; nota: string | null
+}
+interface ProHorario { reglas: ProRule[]; excepciones: ProException[] }
 
 const SLOT_PRESETS = [
   { label: 'Cada 10 min', value: '00,10,20,30,40,50' },
@@ -32,6 +42,18 @@ function fmtTime(t: string | null) {
 
 function parseDays(days: string): number[] {
   return days.split(',').filter(Boolean).map(Number)
+}
+
+/** Paso en minutos según el preset de slots: 60 / nº de marcas por hora. */
+function pasoDe(slotMinutes: string | undefined): number {
+  const n = (slotMinutes ?? '').split(',').filter(Boolean).length
+  return n > 0 ? Math.round(60 / n) : 0
+}
+
+function fmtFechaISO(f: string | null): string {
+  if (!f) return ''
+  const [y, m, d] = f.split('-')
+  return `${d}/${m}/${y}`
 }
 
 export default function ConfiguracionPage() {
@@ -48,6 +70,13 @@ export default function ConfiguracionPage() {
   const [editingRule, setEditingRule] = useState<HourRule | null>(null)
   const [showNewRule, setShowNewRule] = useState(false)
   const [newRule, setNewRule] = useState<HourRule>({ start_time: '09:00', end_time: '20:00', lunch_start: '', lunch_end: '', days: '1,2,3,4,5' })
+
+  // Horarios por profesional
+  const [proSel, setProSel] = useState('')
+  const [proHorario, setProHorario] = useState<ProHorario | null>(null)
+  const [loadingProHorario, setLoadingProHorario] = useState(false)
+  const [showNewProRule, setShowNewProRule] = useState(false)
+  const [newExc, setNewExc] = useState({ fecha: '', hasta: '', tipo: 'cerrado', desde: '09:00', hastaHora: '13:00', nota: '' })
 
   async function loadAll() {
     const [h, s, p, c, g] = await Promise.all([
@@ -99,6 +128,82 @@ export default function ConfiguracionPage() {
     const has = hasCruce(sid, pid)
     await fetch('/api/config/cruces', { method: has ? 'DELETE' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ service_id: sid, professional_id: pid }) })
     loadAll()
+  }
+
+  // ─── Horarios por profesional ──────────────────────────────────────────────
+  async function loadProHorario(pid: string) {
+    if (!pid) { setProHorario(null); return }
+    setLoadingProHorario(true)
+    try {
+      const res = await fetch(`/api/config/horarios-profesional?professional_id=${pid}`)
+      if (res.ok) setProHorario(await res.json())
+    } finally {
+      setLoadingProHorario(false)
+    }
+  }
+
+  function seleccionarPro(pid: string) {
+    setProSel(pid)
+    setShowNewProRule(false)
+    loadProHorario(pid)
+  }
+
+  async function addProRule(r: HourRule) {
+    const res = await fetch('/api/config/horarios-profesional', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tipo_registro: 'regla',
+        professional_id: parseInt(proSel, 10),
+        start_time: r.start_time,
+        end_time: r.end_time,
+        lunch_start: r.lunch_start || null,
+        lunch_end: r.lunch_end || null,
+        days: r.days,
+      }),
+    })
+    if (res.ok) {
+      toast({ title: 'Regla creada' })
+      setShowNewProRule(false)
+      loadProHorario(proSel)
+    } else {
+      toast({ title: 'Error al crear la regla', variant: 'destructive' })
+    }
+  }
+
+  async function deleteProRegistro(tipo_registro: 'regla' | 'excepcion', id: number) {
+    await fetch('/api/config/horarios-profesional', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo_registro, id }),
+    })
+    toast({ title: tipo_registro === 'regla' ? 'Regla eliminada' : 'Excepción eliminada' })
+    loadProHorario(proSel)
+  }
+
+  async function addExcepcion() {
+    if (!proSel || !newExc.fecha) return
+    const body: Record<string, unknown> = {
+      tipo_registro: 'excepcion',
+      professional_id: parseInt(proSel, 10),
+      fecha: newExc.fecha,
+      hasta: newExc.hasta || null,
+      tipo: newExc.tipo,
+      nota: newExc.nota || null,
+    }
+    if (newExc.tipo === 'horario') body.ventanas = [{ desde: newExc.desde, hasta: newExc.hastaHora }]
+    const res = await fetch('/api/config/horarios-profesional', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (res.ok) {
+      toast({ title: 'Excepción creada' })
+      setNewExc({ fecha: '', hasta: '', tipo: 'cerrado', desde: '09:00', hastaHora: '13:00', nota: '' })
+      loadProHorario(proSel)
+    } else {
+      toast({ title: 'Error al crear la excepción', variant: 'destructive' })
+    }
   }
 
   const realPros = professionals.filter(p => !p.is_blocker)
@@ -202,7 +307,22 @@ export default function ConfiguracionPage() {
             <Label>Duración de los slots</Label>
             <div className="flex gap-2">
               {SLOT_PRESETS.map(opt => (
-                <button key={opt.value} onClick={() => setGeneral(p => p ? { ...p, slot_minutes: opt.value } : p)}
+                <button key={opt.value} onClick={() => {
+                  if (!general || general.slot_minutes === opt.value) return
+                  const pasoActual = pasoDe(general.slot_minutes)
+                  const pasoNuevo = pasoDe(opt.value)
+                  const lista = services.filter(s => s.code !== 'DEFAULT')
+                  if (lista.length > 0) {
+                    const lineas = lista
+                      .map(s => `· ${s.name}: ${s.slots_required * pasoActual} → ${s.slots_required * pasoNuevo} min`)
+                      .join('\n')
+                    const ok = window.confirm(
+                      `Con el paso de ${pasoNuevo} min, la duración de cada servicio quedaría así:\n\n${lineas}\n\n¿Aplicar el cambio? (recuerda pulsar "Guardar ajustes")`
+                    )
+                    if (!ok) return
+                  }
+                  setGeneral(p => p ? { ...p, slot_minutes: opt.value } : p)
+                }}
                   className={`px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
                     general.slot_minutes === opt.value
                       ? 'bg-primary text-primary-foreground border-primary shadow-sm'
@@ -334,7 +454,10 @@ export default function ConfiguracionPage() {
                         <span className="font-medium text-sm">{s.name}</span>
                         <Badge variant="outline" className="text-xs">{s.code}</Badge>
                       </div>
-                      <p className="text-xs text-muted-foreground">{s.slots_required} slot{s.slots_required > 1 ? 's' : ''}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {s.slots_required} slot{s.slots_required > 1 ? 's' : ''}
+                        {pasoDe(general?.slot_minutes) > 0 && ` · ${s.slots_required * pasoDe(general?.slot_minutes)} min`}
+                      </p>
                     </div>
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingService({ ...s })}>
@@ -470,6 +593,180 @@ export default function ConfiguracionPage() {
                 </tbody>
               </table>
             </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ─── Horarios por profesional ─────────────────────────────── */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Horarios por profesional</CardTitle>
+          <CardDescription>
+            Sin reglas propias, el profesional hereda el horario del centro; con reglas, se aplica la intersección con el centro
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="space-y-2 max-w-xs">
+            <Label>Profesional</Label>
+            <select
+              value={proSel}
+              onChange={e => seleccionarPro(e.target.value)}
+              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <option value="">— Selecciona un profesional —</option>
+              {realPros.map(p => (
+                <option key={p.id} value={String(p.id)}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {loadingProHorario && (
+            <div className="flex justify-center py-6">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          )}
+
+          {proSel && proHorario && !loadingProHorario && (
+            <>
+              {/* Reglas */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">Reglas semanales</p>
+                  {!showNewProRule && (
+                    <Button size="sm" variant="outline" onClick={() => setShowNewProRule(true)}>
+                      <Plus className="h-3.5 w-3.5" /> Nueva regla
+                    </Button>
+                  )}
+                </div>
+
+                {showNewProRule && (
+                  <RuleEditor
+                    rule={{ start_time: '09:00', end_time: '20:00', lunch_start: '', lunch_end: '', days: '1,2,3,4,5' }}
+                    onSave={r => addProRule(r)}
+                    onCancel={() => setShowNewProRule(false)}
+                  />
+                )}
+
+                {proHorario.reglas.length === 0 && !showNewProRule && (
+                  <p className="text-sm text-muted-foreground">Sin reglas propias: hereda el horario del centro.</p>
+                )}
+
+                {proHorario.reglas.map(regla => (
+                  <div key={regla.id} className="rounded-xl border p-4 flex items-center gap-4 group hover:bg-muted/30 transition-colors">
+                    <div className="rounded-lg bg-primary/10 p-2 shrink-0">
+                      <Clock className="h-4 w-4 text-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0 space-y-1.5">
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="font-semibold">{fmtTime(regla.start_time)} – {fmtTime(regla.end_time)}</span>
+                        {regla.lunch_start && regla.lunch_end && (
+                          <span className="text-muted-foreground text-xs">
+                            (cierre mediodía {fmtTime(regla.lunch_start)} – {fmtTime(regla.lunch_end)})
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex gap-1">
+                        {DAYS.map(day => {
+                          const active = parseDays(regla.days).includes(day.value)
+                          return (
+                            <span key={day.value}
+                              className={`inline-flex items-center justify-center h-6 w-6 rounded-full text-[10px] font-semibold ${
+                                active ? 'bg-primary/15 text-primary' : 'text-muted-foreground/30'
+                              }`}
+                            >
+                              {day.short}
+                            </span>
+                          )
+                        })}
+                      </div>
+                    </div>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={() => deleteProRegistro('regla', regla.id)}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+
+              <Separator />
+
+              {/* Excepciones */}
+              <div className="space-y-3">
+                <p className="text-sm font-medium">Excepciones (vacaciones, cierres, horarios especiales)</p>
+
+                {proHorario.excepciones.length === 0 && (
+                  <p className="text-sm text-muted-foreground">Sin excepciones próximas.</p>
+                )}
+
+                {proHorario.excepciones.map(exc => (
+                  <div key={exc.id} className="rounded-lg border p-3 flex items-center gap-3 group hover:bg-muted/30 transition-colors">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap text-sm">
+                        <span className="font-medium">
+                          {fmtFechaISO(exc.fecha)}{exc.hasta ? ` – ${fmtFechaISO(exc.hasta)}` : ''}
+                        </span>
+                        <Badge variant={exc.tipo === 'cerrado' ? 'destructive' : 'warning'}>
+                          {exc.tipo === 'cerrado' ? 'Cerrado' : 'Horario especial'}
+                        </Badge>
+                        {exc.tipo === 'horario' && Array.isArray(exc.ventanas) && exc.ventanas.map((v, i) => (
+                          <span key={i} className="text-xs text-muted-foreground">{v.desde} – {v.hasta}</span>
+                        ))}
+                      </div>
+                      {exc.nota && <p className="text-xs text-muted-foreground mt-0.5 truncate">{exc.nota}</p>}
+                    </div>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={() => deleteProRegistro('excepcion', exc.id)}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ))}
+
+                {/* Alta de excepción */}
+                <div className="rounded-xl border bg-muted/20 p-4 space-y-3">
+                  <p className="text-sm font-medium">Añadir excepción</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Fecha</Label>
+                      <Input type="date" value={newExc.fecha} onChange={e => setNewExc(p => ({ ...p, fecha: e.target.value }))} className="h-9" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Hasta (opcional)</Label>
+                      <Input type="date" value={newExc.hasta} onChange={e => setNewExc(p => ({ ...p, hasta: e.target.value }))} className="h-9" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Tipo</Label>
+                      <select
+                        value={newExc.tipo}
+                        onChange={e => setNewExc(p => ({ ...p, tipo: e.target.value }))}
+                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      >
+                        <option value="cerrado">Cerrado</option>
+                        <option value="horario">Horario especial</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Nota (opcional)</Label>
+                      <Input value={newExc.nota} onChange={e => setNewExc(p => ({ ...p, nota: e.target.value }))} className="h-9" placeholder="Vacaciones..." />
+                    </div>
+                  </div>
+                  {newExc.tipo === 'horario' && (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Desde</Label>
+                        <Input type="time" value={newExc.desde} onChange={e => setNewExc(p => ({ ...p, desde: e.target.value }))} className="h-9" />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Hasta</Label>
+                        <Input type="time" value={newExc.hastaHora} onChange={e => setNewExc(p => ({ ...p, hastaHora: e.target.value }))} className="h-9" />
+                      </div>
+                    </div>
+                  )}
+                  <Button size="sm" onClick={addExcepcion} disabled={!newExc.fecha || (newExc.tipo === 'horario' && (!newExc.desde || !newExc.hastaHora))}>
+                    <Plus className="h-3.5 w-3.5" /> Añadir excepción
+                  </Button>
+                </div>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

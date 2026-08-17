@@ -1,0 +1,40 @@
+# Bot (app 2 del repo, build path /bot en Dokploy)
+services:
+  bot:
+    build: .
+    # Nombre fijo en la red dokploy: así el webhook de Chatwoot y el BOT_URL del panel
+    # son siempre http://fisio-bot:3000, independientemente del nombre de la app en Dokploy.
+    hostname: fisio-bot
+    container_name: fisio-bot
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      DATABASE_URL: ${DATABASE_URL}
+      LLM_PROVIDER: ${LLM_PROVIDER}
+      LLM_MODEL: ${LLM_MODEL}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      EMBEDDINGS_API_URL: ${EMBEDDINGS_API_URL}
+      EMBEDDINGS_API_KEY: ${EMBEDDINGS_API_KEY}
+      EMBEDDINGS_MODEL: ${EMBEDDINGS_MODEL}
+      CHATWOOT_URL: ${CHATWOOT_URL}
+      CHATWOOT_ACCOUNT_ID: ${CHATWOOT_ACCOUNT_ID}
+      CHATWOOT_TOKEN: ${CHATWOOT_TOKEN}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET}
+      EVOLUTION_URL: ${EVOLUTION_URL}
+      EVOLUTION_INSTANCE: ${EVOLUTION_INSTANCE}
+      EVOLUTION_TOKEN: ${EVOLUTION_TOKEN}
+      # Ruta al fichero, o el JSON entero en UNA línea (en Dokploy, lo segundo)
+      GOOGLE_SERVICE_ACCOUNT: ${GOOGLE_SERVICE_ACCOUNT}
+      STT_URL: ${STT_URL}
+      STT_API_KEY: ${STT_API_KEY}
+      STT_MODEL: ${STT_MODEL}
+      ADMIN_TOKEN: ${ADMIN_TOKEN}
+      DRY_RUN: ${DRY_RUN:-true}
+      RECORDATORIOS_DRY_RUN: ${RECORDATORIOS_DRY_RUN:-true}
+    networks:
+      - dokploy-network
+
+networks:
+  dokploy-network:
+    external: true

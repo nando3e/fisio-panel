@@ -12,7 +12,7 @@ interface DashboardData {
   citasMes: number
   porProfesional: { name: string; count: string }[]
   botActivo: boolean
-  proximas: { start_time: string; end_time: string; professional_name: string; service_name: string }[]
+  proximas: { start_time: string; end_time: string; paciente: string | null; professional_name: string | null; service_name: string | null }[]
 }
 
 function formatHour(iso: string) {
@@ -161,8 +161,10 @@ export default function DashboardPage() {
                   <p className="text-sm font-semibold">{formatHour(c.start_time)}</p>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{c.service_name}</p>
-                  <p className="text-xs text-muted-foreground">{c.professional_name}</p>
+                  <p className="text-sm font-medium truncate">{c.paciente ?? 'Sin nombre'}</p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    {[c.service_name, c.professional_name].filter(Boolean).join(' · ') || 'Sin servicio asignado'}
+                  </p>
                 </div>
                 <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
               </div>

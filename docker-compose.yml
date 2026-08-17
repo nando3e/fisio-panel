@@ -1,3 +1,5 @@
+# Panel (app 1 del repo). El bot es la app 2: compose propio en bot/docker-compose.yml.
+# Ambos en el proyecto Dokploy CITAS, sobre dokploy-network (Traefik + hostnames internos).
 services:
   app:
     build: .
@@ -10,6 +12,11 @@ services:
       SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       UPLOAD_DIR: /app/uploads
+      EMBEDDINGS_API_URL: ${EMBEDDINGS_API_URL}
+      EMBEDDINGS_API_KEY: ${EMBEDDINGS_API_KEY}
+      EMBEDDINGS_MODEL: ${EMBEDDINGS_MODEL}
+      BOT_URL: ${BOT_URL}
+      BOT_ADMIN_TOKEN: ${BOT_ADMIN_TOKEN}
     volumes:
       - uploads:/app/uploads
     networks:
