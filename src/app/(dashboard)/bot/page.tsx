@@ -165,6 +165,60 @@ function AjustesTab() {
 }
 
 // ─── Pestaña Prompts ──────────────────────────────────────────────────────────
+/** Diff por líneas (LCS). Suficiente para prompts; evita publicar pisando ediciones sin verlas. */
+function diffLineas(antes: string, despues: string): Array<{ tipo: '=' | '-' | '+'; linea: string }> {
+  const a = antes.split('\n')
+  const b = despues.split('\n')
+  const lcs: number[][] = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0))
+  for (let i = a.length - 1; i >= 0; i--) {
+    for (let j = b.length - 1; j >= 0; j--) {
+      lcs[i][j] = a[i] === b[j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1])
+    }
+  }
+  const resultado: Array<{ tipo: '=' | '-' | '+'; linea: string }> = []
+  let i = 0, j = 0
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { resultado.push({ tipo: '=', linea: a[i] }); i++; j++ }
+    else if (lcs[i + 1][j] >= lcs[i][j + 1]) { resultado.push({ tipo: '-', linea: a[i] }); i++ }
+    else { resultado.push({ tipo: '+', linea: b[j] }); j++ }
+  }
+  while (i < a.length) { resultado.push({ tipo: '-', linea: a[i] }); i++ }
+  while (j < b.length) { resultado.push({ tipo: '+', linea: b[j] }); j++ }
+  return resultado
+}
+
+function VistaDiff({ antes, despues, etiquetaAntes, etiquetaDespues }: {
+  antes: string; despues: string; etiquetaAntes: string; etiquetaDespues: string
+}) {
+  const lineas = diffLineas(antes, despues)
+  const cambios = lineas.filter(l => l.tipo !== '=')
+  if (!cambios.length) return <p className="text-xs text-muted-foreground py-2">Sin diferencias.</p>
+  return (
+    <div className="rounded-md border bg-muted/30 overflow-hidden">
+      <p className="text-xs text-muted-foreground px-3 py-1.5 border-b">
+        <span className="text-red-600 dark:text-red-400">− {etiquetaAntes}</span>
+        {' · '}
+        <span className="text-green-700 dark:text-green-400">+ {etiquetaDespues}</span>
+        {' · '}{cambios.length} línea{cambios.length === 1 ? '' : 's'} distinta{cambios.length === 1 ? '' : 's'}
+      </p>
+      <pre className="text-xs font-mono overflow-x-auto max-h-64 overflow-y-auto p-0 m-0">
+        {lineas.map((l, idx) => (
+          <div
+            key={idx}
+            className={
+              l.tipo === '-' ? 'bg-red-500/10 text-red-700 dark:text-red-400 px-3'
+              : l.tipo === '+' ? 'bg-green-500/10 text-green-800 dark:text-green-400 px-3'
+              : 'px-3 text-muted-foreground/80'
+            }
+          >
+            {l.tipo === '=' ? '  ' : `${l.tipo} `}{l.linea || ' '}
+          </div>
+        ))}
+      </pre>
+    </div>
+  )
+}
+
 function PromptsTab() {
   const [roles, setRoles] = useState<string[]>([])
   const [activos, setActivos] = useState<PromptVersion[]>([])
@@ -173,6 +227,7 @@ function PromptsTab() {
   const [historial, setHistorial] = useState<PromptVersion[]>([])
   const [loading, setLoading] = useState(true)
   const [working, setWorking] = useState(false)
+  const [comparando, setComparando] = useState<number | null>(null)
 
   const cargarActivos = useCallback(async () => {
     const res = await fetch('/api/prompts')
@@ -287,7 +342,16 @@ function PromptsTab() {
               className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm font-mono shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y"
               placeholder="Contenido del prompt..."
             />
-            <Button size="sm" onClick={publicar} disabled={working || !contenido.trim()}>
+            {/* El diff aparece en cuanto hay cambios: nunca se publica a ciegas (lección de balta). */}
+            {contenido !== (activos.find(a => a.rol === rol)?.contenido ?? '') && (
+              <VistaDiff
+                antes={activos.find(a => a.rol === rol)?.contenido ?? ''}
+                despues={contenido}
+                etiquetaAntes={`versión activa v${activos.find(a => a.rol === rol)?.version ?? '—'}`}
+                etiquetaDespues="tu edición (sin publicar)"
+              />
+            )}
+            <Button size="sm" onClick={publicar} disabled={working || !contenido.trim() || contenido === (activos.find(a => a.rol === rol)?.contenido ?? '')}>
               {working ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UploadCloud className="h-3.5 w-3.5" />}
               Publicar nueva versión
             </Button>
@@ -300,20 +364,35 @@ function PromptsTab() {
                 <p className="text-sm text-muted-foreground">Sin versiones para este rol todavía.</p>
               ) : (
                 historial.map(v => (
-                  <div key={v.id} className="rounded-lg border p-3 flex items-center gap-3">
-                    <Badge variant={v.activo ? 'success' : 'outline'}>v{v.version}</Badge>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs text-muted-foreground truncate">
-                        {v.created_at ? fmtFechaHora(v.created_at) : ''}{v.nota ? ` · ${v.nota}` : ''}
-                      </p>
-                      <p className="text-xs text-muted-foreground/70 truncate">{v.contenido.slice(0, 120)}</p>
+                  <div key={v.id} className="rounded-lg border p-3 space-y-2">
+                    <div className="flex items-center gap-3">
+                      <Badge variant={v.activo ? 'success' : 'outline'}>v{v.version}</Badge>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-muted-foreground truncate">
+                          {v.created_at ? fmtFechaHora(v.created_at) : ''}{v.nota ? ` · ${v.nota}` : ''}
+                        </p>
+                        <p className="text-xs text-muted-foreground/70 truncate">{v.contenido.slice(0, 120)}</p>
+                      </div>
+                      {v.activo ? (
+                        <span className="text-xs text-muted-foreground shrink-0">Activa</span>
+                      ) : (
+                        <div className="flex gap-1.5 shrink-0">
+                          <Button size="sm" variant="ghost" onClick={() => setComparando(comparando === v.id ? null : v.id)}>
+                            {comparando === v.id ? 'Ocultar' : 'Comparar'}
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => reactivar(v)} disabled={working}>
+                            <RotateCcw className="h-3.5 w-3.5" /> Reactivar
+                          </Button>
+                        </div>
+                      )}
                     </div>
-                    {v.activo ? (
-                      <span className="text-xs text-muted-foreground shrink-0">Activa</span>
-                    ) : (
-                      <Button size="sm" variant="outline" onClick={() => reactivar(v)} disabled={working}>
-                        <RotateCcw className="h-3.5 w-3.5" /> Reactivar
-                      </Button>
+                    {comparando === v.id && !v.activo && (
+                      <VistaDiff
+                        antes={v.contenido}
+                        despues={activos.find(a => a.rol === rol)?.contenido ?? ''}
+                        etiquetaAntes={`v${v.version}`}
+                        etiquetaDespues={`activa v${activos.find(a => a.rol === rol)?.version ?? '—'}`}
+                      />
                     )}
                   </div>
                 ))
