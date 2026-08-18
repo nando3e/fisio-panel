@@ -100,7 +100,7 @@ export default function ConfiguracionPage() {
     setCruces(c)
     setGeneral(g)
     setCierres(Array.isArray(ci) ? ci : [])
-    setProsConReglas([...new Set<number>((ph?.reglas ?? []).map((r: ProRule) => r.professional_id))])
+    setProsConReglas(Array.from(new Set<number>((ph?.reglas ?? []).map((r: ProRule) => r.professional_id))))
   }
 
   async function addCierre() {
