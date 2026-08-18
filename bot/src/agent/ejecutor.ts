@@ -406,10 +406,12 @@ async function confirmarCita(deps: DepsEjecutor, ctx: ToolContext): Promise<unkn
   // Ficha del paciente que se visita (solo cuando la reserva es real).
   let pacienteId: number | null = null;
   let nombrePaciente: string | null = nombreDeclarado;
+  let apellidoPaciente: string | null = propuesta.paraApellido;
   if (!simulacion) {
     if (propuesta.paraOtraPersona) {
       const tercero = await deps.pacientes.tercero(ctx.telefono, nombreDeclarado, propuesta.paraApellido);
       pacienteId = tercero.id; nombrePaciente = tercero.nombre;
+      apellidoPaciente = tercero.apellido ?? propuesta.paraApellido;
     } else {
       const titular = await deps.pacientes.guardarTitular(ctx.telefono, {
         nombre: propuesta.paraNombre, apellido: propuesta.paraApellido, idioma: ctx.idioma,
@@ -418,6 +420,7 @@ async function confirmarCita(deps: DepsEjecutor, ctx: ToolContext): Promise<unkn
         return { falta_nombre: true, detalle: 'Falta el nombre del paciente. Pídelo y vuelve a proponer la cita con nombre.' };
       }
       pacienteId = titular.id; nombrePaciente = titular.nombre;
+      apellidoPaciente = titular.apellido ?? propuesta.paraApellido;
     }
   }
 
@@ -464,11 +467,12 @@ async function confirmarCita(deps: DepsEjecutor, ctx: ToolContext): Promise<unkn
       ctx.idioma === 'ca' ? 'Reservat! ✅' : '¡Reservado! ✅',
       '',
       tarjetaCita({
-        idioma: ctx.idioma, servicio: servicio.name, paraNombre: nombrePaciente,
+        idioma: ctx.idioma, servicio: servicio.name,
+        paraNombre: nombrePaciente ? `${nombrePaciente}${apellidoPaciente ? ` ${apellidoPaciente}` : ''}` : null,
         fisio: pro.name, inicio: resuelto.inicio, tz: settings.timezone,
       }),
     ].join('\n'),
-    detalle: 'Envía `mensaje` TAL CUAL, con sus saltos de línea exactos; puedes añadir una despedida breve después.',
+    detalle: 'Tu respuesta debe ser EXACTAMENTE el contenido de `mensaje`, copiando CADA salto de línea tal cual (el día de la semana y la fecha van en líneas SEPARADAS). Como máximo, añade UNA frase de despedida al final.',
     fecha: fechaLegible(fechaLocal(resuelto.inicio, settings.timezone), ctx.idioma),
     hora: horaLocal(resuelto.inicio, settings.timezone),
     profesional: pro.name,
