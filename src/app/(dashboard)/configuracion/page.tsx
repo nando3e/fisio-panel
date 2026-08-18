@@ -74,6 +74,7 @@ export default function ConfiguracionPage() {
 
   // Horarios por profesional
   const [proSel, setProSel] = useState('')
+  const [prosConReglas, setProsConReglas] = useState<number[]>([])
   const [proHorario, setProHorario] = useState<ProHorario | null>(null)
   const [loadingProHorario, setLoadingProHorario] = useState(false)
   const [showNewProRule, setShowNewProRule] = useState(false)
@@ -84,13 +85,14 @@ export default function ConfiguracionPage() {
   const [newCierre, setNewCierre] = useState({ desde: '', hasta: '', motivo: '', mensaje: '' })
 
   async function loadAll() {
-    const [h, s, p, c, g, ci] = await Promise.all([
+    const [h, s, p, c, g, ci, ph] = await Promise.all([
       fetch('/api/config/horarios').then(r => r.json()),
       fetch('/api/config/servicios').then(r => r.json()),
       fetch('/api/config/profesionales').then(r => r.json()),
       fetch('/api/config/cruces').then(r => r.json()),
       fetch('/api/config/general').then(r => r.json()),
       fetch('/api/config/cierres').then(r => r.json()),
+      fetch('/api/config/horarios-profesional').then(r => r.json()),
     ])
     setRules(h.map((x: HourRule) => ({ ...x, start_time: fmtTime(x.start_time), end_time: fmtTime(x.end_time), lunch_start: fmtTime(x.lunch_start), lunch_end: fmtTime(x.lunch_end) })))
     setServices(s)
@@ -98,6 +100,7 @@ export default function ConfiguracionPage() {
     setCruces(c)
     setGeneral(g)
     setCierres(Array.isArray(ci) ? ci : [])
+    setProsConReglas([...new Set<number>((ph?.reglas ?? []).map((r: ProRule) => r.professional_id))])
   }
 
   async function addCierre() {
@@ -128,7 +131,13 @@ export default function ConfiguracionPage() {
     loadAll()
   }
 
-  useEffect(() => { loadAll() }, [])
+  useEffect(() => {
+    loadAll()
+    // El profesional seleccionado sobrevive al refresco: era el "no veo el horario de Carmen".
+    const guardado = localStorage.getItem('horarios_pro_sel')
+    if (guardado) seleccionarPro(guardado)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function saveGeneral() {
     setSaving('general')
@@ -180,6 +189,8 @@ export default function ConfiguracionPage() {
   function seleccionarPro(pid: string) {
     setProSel(pid)
     setShowNewProRule(false)
+    if (pid) localStorage.setItem('horarios_pro_sel', pid)
+    else localStorage.removeItem('horarios_pro_sel')
     loadProHorario(pid)
   }
 
@@ -650,9 +661,20 @@ export default function ConfiguracionPage() {
             >
               <option value="">— Selecciona un profesional —</option>
               {realPros.map(p => (
-                <option key={p.id} value={String(p.id)}>{p.name}</option>
+                <option key={p.id} value={String(p.id)}>{p.name}{prosConReglas.includes(p.id) ? ' · horario propio' : ''}</option>
               ))}
             </select>
+            {prosConReglas.length > 0 && (
+              <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                <span className="text-xs text-muted-foreground">Con horario propio:</span>
+                {realPros.filter(p => prosConReglas.includes(p.id)).map(p => (
+                  <button key={p.id} type="button" onClick={() => seleccionarPro(String(p.id))}
+                    className="inline-flex items-center rounded-full bg-primary/10 text-primary px-2.5 py-0.5 text-xs font-medium hover:bg-primary/20 transition-colors">
+                    {p.name}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {loadingProHorario && (
