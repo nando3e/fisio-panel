@@ -54,6 +54,11 @@ export async function calcularDisponibilidad(deps: DepsDisponibilidad, args: Arg
   const reglasCentro = await catalogo.reglasCentro();
   const cat = await catalogo.catalogo();
 
+  // Cierres del panel: mandan sobre todo lo demás. Un día dentro de un cierre
+  // no se calcula siquiera (ni Google ni horarios): cerrado, con su mensaje.
+  const cierres = await catalogo.cierresDesde(args.desdeFecha);
+  const cierreDe = (fecha: string) => cierres.find((c) => fecha >= c.desde && fecha <= c.hasta) ?? null;
+
   // Ocupación del blocker (cierres del centro): una lectura por calendario blocker.
   // Se conservan también los eventos con su título, para poder explicar el MOTIVO del cierre.
   const blocker: Intervalo[] = [];
@@ -96,6 +101,13 @@ export async function calcularDisponibilidad(deps: DepsDisponibilidad, args: Arg
   const dias: DiaDisponibilidad[] = [];
   for (let i = 0; i < args.diasNaturales; i++) {
     const fecha = sumarDias(args.desdeFecha, i);
+
+    const cierrePanel = cierreDe(fecha);
+    if (cierrePanel) {
+      dias.push({ fecha, huecos: [], motivo: 'cerrado', cierre: cierrePanel.mensaje ?? cierrePanel.motivo ?? null });
+      continue;
+    }
+
     const porInicio = new Map<number, Hueco>();
     let algunaVentana = false;
     for (const pro of args.candidatos) {

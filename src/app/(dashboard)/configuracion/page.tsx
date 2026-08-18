@@ -29,6 +29,7 @@ interface ProException {
   ventanas: Ventana[] | null; nota: string | null
 }
 interface ProHorario { reglas: ProRule[]; excepciones: ProException[] }
+interface Cierre { id: number; desde: string; hasta: string; motivo: string | null; mensaje: string | null }
 
 const SLOT_PRESETS = [
   { label: 'Cada 10 min', value: '00,10,20,30,40,50' },
@@ -78,19 +79,53 @@ export default function ConfiguracionPage() {
   const [showNewProRule, setShowNewProRule] = useState(false)
   const [newExc, setNewExc] = useState({ fecha: '', hasta: '', tipo: 'cerrado', desde: '09:00', hastaHora: '13:00', nota: '' })
 
+  // Cierres del centro (vacaciones, festivos)
+  const [cierres, setCierres] = useState<Cierre[]>([])
+  const [newCierre, setNewCierre] = useState({ desde: '', hasta: '', motivo: '', mensaje: '' })
+
   async function loadAll() {
-    const [h, s, p, c, g] = await Promise.all([
+    const [h, s, p, c, g, ci] = await Promise.all([
       fetch('/api/config/horarios').then(r => r.json()),
       fetch('/api/config/servicios').then(r => r.json()),
       fetch('/api/config/profesionales').then(r => r.json()),
       fetch('/api/config/cruces').then(r => r.json()),
       fetch('/api/config/general').then(r => r.json()),
+      fetch('/api/config/cierres').then(r => r.json()),
     ])
     setRules(h.map((x: HourRule) => ({ ...x, start_time: fmtTime(x.start_time), end_time: fmtTime(x.end_time), lunch_start: fmtTime(x.lunch_start), lunch_end: fmtTime(x.lunch_end) })))
     setServices(s)
     setProfessionals(p)
     setCruces(c)
     setGeneral(g)
+    setCierres(Array.isArray(ci) ? ci : [])
+  }
+
+  async function addCierre() {
+    if (!newCierre.desde) return
+    const res = await fetch('/api/config/cierres', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        desde: newCierre.desde,
+        hasta: newCierre.hasta || newCierre.desde,
+        motivo: newCierre.motivo || null,
+        mensaje: newCierre.mensaje || null,
+      }),
+    })
+    if (res.ok) {
+      toast({ title: 'Cierre creado' })
+      setNewCierre({ desde: '', hasta: '', motivo: '', mensaje: '' })
+      loadAll()
+    } else {
+      const err = await res.json().catch(() => ({}))
+      toast({ title: err.error ?? 'Error al crear el cierre', variant: 'destructive' })
+    }
+  }
+
+  async function deleteCierre(id: number) {
+    await fetch('/api/config/cierres', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) })
+    toast({ title: 'Cierre eliminado' })
+    loadAll()
   }
 
   useEffect(() => { loadAll() }, [])
@@ -768,6 +803,65 @@ export default function ConfiguracionPage() {
               </div>
             </>
           )}
+        </CardContent>
+      </Card>
+
+      {/* ─── Cierres del centro ───────────────────────────────────── */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Cierres del centro</CardTitle>
+          <CardDescription>
+            Vacaciones, festivos, obras… El bot no ofrece citas en esas fechas (aunque los calendarios estén libres) y explica el motivo con el mensaje que escribas
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {cierres.length === 0 && (
+            <p className="text-sm text-muted-foreground">Sin cierres programados.</p>
+          )}
+
+          {cierres.map(cierre => (
+            <div key={cierre.id} className="rounded-lg border p-3 flex items-center gap-3 group hover:bg-muted/30 transition-colors">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap text-sm">
+                  <span className="font-medium">
+                    {fmtFechaISO(cierre.desde)}{cierre.hasta !== cierre.desde ? ` – ${fmtFechaISO(cierre.hasta)}` : ''}
+                  </span>
+                  {cierre.motivo && <Badge variant="destructive">{cierre.motivo}</Badge>}
+                </div>
+                {cierre.mensaje && <p className="text-xs text-muted-foreground mt-0.5 truncate">«{cierre.mensaje}»</p>}
+              </div>
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={() => deleteCierre(cierre.id)}>
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          ))}
+
+          <div className="rounded-xl border bg-muted/20 p-4 space-y-3">
+            <p className="text-sm font-medium">Añadir cierre</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Desde</Label>
+                <Input type="date" value={newCierre.desde} onChange={e => setNewCierre(p => ({ ...p, desde: e.target.value }))} className="h-9" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Hasta (incluido; vacío = solo un día)</Label>
+                <Input type="date" value={newCierre.hasta} onChange={e => setNewCierre(p => ({ ...p, hasta: e.target.value }))} className="h-9" />
+              </div>
+              <div className="space-y-1 col-span-2">
+                <Label className="text-xs text-muted-foreground">Motivo (etiqueta corta)</Label>
+                <Input value={newCierre.motivo} onChange={e => setNewCierre(p => ({ ...p, motivo: e.target.value }))} className="h-9" placeholder="Vacaciones, Festivo local…" />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Mensaje para el paciente (el bot lo usará tal cual)</Label>
+              <Input value={newCierre.mensaje} onChange={e => setNewCierre(p => ({ ...p, mensaje: e.target.value }))} className="h-9"
+                placeholder="Estamos de vacaciones del 20 al 30 de agosto, volvemos el día 31 💆" />
+            </div>
+            <Button size="sm" onClick={addCierre} disabled={!newCierre.desde}>
+              <Plus className="h-3.5 w-3.5" /> Añadir cierre
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>

@@ -9,7 +9,9 @@ const reglasCentro = [
 ];
 const marta = { id: 1, name: 'Marta', calendarId: 'cal-marta' };
 
-function deps(eventosPorCalendario: Record<string, EventoCal[]>): DepsDisponibilidad {
+interface CierrePanel { id: number; desde: string; hasta: string; motivo: string | null; mensaje: string | null }
+
+function deps(eventosPorCalendario: Record<string, EventoCal[]>, cierresPanel: CierrePanel[] = []): DepsDisponibilidad {
   return {
     config: { settings: async () => settings },
     catalogo: {
@@ -18,6 +20,7 @@ function deps(eventosPorCalendario: Record<string, EventoCal[]>): DepsDisponibil
       catalogo: async () => ({ servicios: [], profesionales: [], porServicio: new Map(), blockerCalendarIds: ['cal-cierres'] }),
       reglasProfesional: async () => [],
       excepcionesProfesional: async () => [],
+      cierresDesde: async () => cierresPanel,
     },
     calendario: {
       listarEventos: async (calId: string) => eventosPorCalendario[calId] ?? [],
@@ -64,6 +67,26 @@ test('día lleno por citas normales (sin blocker) sigue siendo "completo", nunca
   assert.equal(d.dias[0]!.huecos.length, 0);
   assert.equal(d.dias[0]!.motivo, 'completo');
   assert.equal(d.dias[0]!.cierre, undefined);
+});
+
+test('cierre del PANEL: el día dentro del rango se cierra con su mensaje, aunque Google esté libre', async () => {
+  const d = await calcularDisponibilidad(deps({}, [
+    { id: 1, desde: '2026-08-10', hasta: '2026-08-19', motivo: 'Vacaciones', mensaje: 'Estamos de vacaciones, volvemos el día 20 💆' },
+  ]), args);
+  assert.equal(d.dias[0]!.motivo, 'cerrado');
+  assert.equal(d.dias[0]!.cierre, 'Estamos de vacaciones, volvemos el día 20 💆');
+  assert.equal(d.dias[0]!.huecos.length, 0);
+  // El día siguiente al fin del cierre vuelve a ofrecer con normalidad.
+  assert.equal(d.dias[1]!.motivo, 'ok');
+  assert.ok(d.dias[1]!.huecos.length > 0);
+});
+
+test('cierre del panel sin mensaje: usa el motivo como texto', async () => {
+  const d = await calcularDisponibilidad(deps({}, [
+    { id: 1, desde: '2026-08-19', hasta: '2026-08-19', motivo: 'Festivo local', mensaje: null },
+  ]), args);
+  assert.equal(d.dias[0]!.motivo, 'cerrado');
+  assert.equal(d.dias[0]!.cierre, 'Festivo local');
 });
 
 test('cierre parcial (solo unas horas) NO marca el día como cerrado', async () => {

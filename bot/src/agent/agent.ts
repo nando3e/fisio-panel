@@ -11,6 +11,7 @@ import type { DetalleTool } from '../db/repos/traces';
 import { TOOLS } from './tools';
 import { ejecutarTool, type DepsEjecutor, type ToolContext } from './ejecutor';
 import { bloqueCatalogo, bloqueNegocio, bloquePaciente, bloqueTemporal } from './contexto';
+import { fechaLocal } from '../booking/tiempo';
 import type { ContextoPaciente } from '../patient/turno';
 
 const MAX_ITERACIONES = 8;
@@ -50,6 +51,7 @@ async function componerSystem(deps: DepsAgente, ctx: ToolContext): Promise<{ sys
   const settings = await deps.ejecutor.config.settings();
   const catalogo = await deps.ejecutor.catalogo.catalogo();
   const reglasCentro = await deps.ejecutor.catalogo.reglasCentro();
+  const cierres = await deps.ejecutor.catalogo.cierresDesde(fechaLocal(ctx.ahora, settings.timezone));
   const [nombre, direccion, diasCalendario] = await Promise.all([
     deps.ejecutor.config.valor('nombre_negocio'),
     deps.ejecutor.config.valor('direccion_negocio'),
@@ -61,7 +63,7 @@ async function componerSystem(deps: DepsAgente, ctx: ToolContext): Promise<{ sys
     bloqueCatalogo(catalogo, settings.paso),
     bloqueNegocio({ nombre, direccion, telefono: settings.telefonoNegocio, reglasCentro }),
     bloquePaciente(ctx.paciente, ctx.continuidadModo),
-    bloqueTemporal({ ahora: ctx.ahora, tz: settings.timezone, diasCalendario, reglasCentro, idioma: ctx.idioma }),
+    bloqueTemporal({ ahora: ctx.ahora, tz: settings.timezone, diasCalendario, reglasCentro, idioma: ctx.idioma, cierres }),
   ].join('\n\n---\n\n');
   return { system, versiones };
 }

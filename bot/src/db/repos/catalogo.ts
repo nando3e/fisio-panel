@@ -9,6 +9,10 @@ export interface Excepcion {
   fecha: string; hasta: string | null; tipo: 'cerrado' | 'horario';
   ventanas: Array<{ desde: string; hasta: string }> | null;
 }
+/** Cierre del centro marcado en el panel: rango inclusivo + mensaje para el paciente. */
+export interface Cierre {
+  id: number; desde: string; hasta: string; motivo: string | null; mensaje: string | null;
+}
 
 export interface Catalogo {
   profesionales: Profesional[];             // activos, no blocker
@@ -104,6 +108,21 @@ export class CatalogoRepo {
       fecha: r.fecha, hasta: r.hasta, tipo: r.tipo as 'cerrado' | 'horario',
       ventanas: (r.ventanas as Excepcion['ventanas']) ?? null,
     }));
+  }
+
+  /**
+   * Cierres vigentes desde una fecha, SIN tope superior (lección de balta: las
+   * vacaciones se marcan con meses de antelación y deben verse ya). Son un
+   * puñado de filas al año; se leen una vez por turno.
+   * Fechas con to_char para esquivar la conversión Date→UTC que corría un día.
+   */
+  async cierresDesde(fecha: string): Promise<Cierre[]> {
+    const res = await this.pool.query<{ id: number; desde: string; hasta: string; motivo: string | null; mensaje: string | null }>(
+      `SELECT id, to_char(desde, 'YYYY-MM-DD') AS desde, to_char(hasta, 'YYYY-MM-DD') AS hasta, motivo, mensaje
+       FROM cierres WHERE hasta >= $1::date ORDER BY desde`,
+      [fecha],
+    );
+    return res.rows;
   }
 
   /** Round-robin persistente para "cualquiera": devuelve el siguiente candidato y avanza el puntero. */

@@ -66,21 +66,39 @@ export function bloquePaciente(ctx: ContextoPaciente, modo: 'preferida' | 'oblig
   return lineas.join('\n');
 }
 
+export interface CierreProgramado {
+  desde: string; hasta: string; motivo: string | null; mensaje: string | null;
+}
+
 export function bloqueTemporal(args: {
   ahora: Date; tz: string; diasCalendario: number; reglasCentro: ReglaHoraria[]; idioma: string;
+  cierres?: CierreProgramado[];
 }): string {
-  const { ahora, tz, diasCalendario, reglasCentro } = args;
+  const { ahora, tz, diasCalendario, reglasCentro, cierres = [] } = args;
   const hoy = fechaLocal(ahora, tz);
+  const enCierre = (fecha: string) => cierres.find((c) => fecha >= c.desde && fecha <= c.hasta);
   const lineas: string[] = ['## Fecha y calendario de referencia'];
   lineas.push(`- AHORA: ${fechaLegible(hoy)} de ${hoy.slice(0, 4)}, ${horaLocal(ahora, tz)} (${tz}).`);
   lineas.push(`- Tabla de los próximos ${diasCalendario} días. Para resolver "el martes que viene" LEE esta tabla, no cuentes días. "El X que viene" = la primera aparición futura de ese día, aunque caiga esta misma semana.`);
   lineas.push('- Los días CERRADO lo son por horario semanal del centro; un día lleno NO está cerrado. Puede haber cierres puntuales adicionales: la agenda real siempre la da consultar_disponibilidad.');
   for (let i = 0; i < diasCalendario; i++) {
     const fecha = sumarDias(hoy, i);
-    const cerrado = ventanasDeReglas(reglasCentro, diaSemanaDe(fecha)).length === 0;
+    const cierre = enCierre(fecha);
+    const cerrado = !cierre && ventanasDeReglas(reglasCentro, diaSemanaDe(fecha)).length === 0;
     const etiqueta = i === 0 ? ' [HOY]' : i === 1 ? ' [mañana]' : '';
-    lineas.push(`  ${nombreDia(diaSemanaDe(fecha))} ${fecha}${etiqueta}${cerrado ? ' — CERRADO' : ''}`);
+    const marca = cierre ? ` — CERRADO (${cierre.motivo ?? 'cierre programado'})` : cerrado ? ' — CERRADO' : '';
+    lineas.push(`  ${nombreDia(diaSemanaDe(fecha))} ${fecha}${etiqueta}${marca}`);
   }
   lineas.push(`- Ámbito: la tabla cubre SOLO estos ${diasCalendario} días; para fechas posteriores consulta disponibilidad con la fecha concreta, existen igualmente.`);
+  if (cierres.length) {
+    // Rangos completos, no días sueltos: "¿cuándo hacéis vacaciones?" se responde
+    // copiando de aquí, no reconstruyendo fechas (el modelo lo hace mal).
+    lineas.push('- Cierres programados del centro (NO ofrezcas citas dentro del rango; si preguntan por esas fechas o por el cierre, informa usando su mensaje):');
+    for (const c of cierres) {
+      const rango = c.desde === c.hasta ? `el ${c.desde}` : `del ${c.desde} al ${c.hasta} (ambos incluidos)`;
+      const detalle = c.mensaje ?? c.motivo ?? 'cerrado';
+      lineas.push(`  - ${rango}${c.motivo ? ` — ${c.motivo}` : ''}: «${detalle}»`);
+    }
+  }
   return lineas.join('\n');
 }

@@ -45,6 +45,7 @@ function catalogoFalso(): CatalogoRepo {
     async reglasCentro() { return [{ startTime: '09:00', endTime: '20:00', lunchStart: null, lunchEnd: null, days: [1, 2, 3, 4, 5] }]; },
     async reglasProfesional() { return []; },
     async excepcionesProfesional() { return []; },
+    async cierresDesde() { return []; },
     async siguienteProfesional(candidatos: number[]) { return candidatos[0]!; },
   } as unknown as CatalogoRepo;
 }

@@ -138,8 +138,18 @@ async function consultarDisponibilidad(deps: DepsEjecutor, ctx: ToolContext, arg
   const desde = fechaPedida && fechaPedida >= hoy ? fechaPedida : hoy;
   const diasAMostrar = await deps.config.entero('dias_a_mostrar');
 
+  // Si el arranque cae dentro de un cierre del panel, la ventana se alarga hasta
+  // pasarlo: las "próximas disponibles" son los primeros días abiertos DESPUÉS
+  // del cierre, no un mudo "sin huecos" (comportamiento de balta).
+  let ventanaDias = VENTANA_EXPLORACION_DIAS;
+  const cierreEnDesde = (await deps.catalogo.cierresDesde(desde)).find((c) => desde >= c.desde && desde <= c.hasta);
+  if (cierreEnDesde) {
+    const diasDeCierre = Math.round((Date.parse(cierreEnDesde.hasta) - Date.parse(desde)) / 86_400_000) + 1;
+    ventanaDias = Math.min(diasDeCierre + VENTANA_EXPLORACION_DIAS, 90);
+  }
+
   const disponibilidad = await calcularDisponibilidad(depsDisponibilidad(deps), {
-    serviceId, candidatos, desdeFecha: desde, diasNaturales: VENTANA_EXPLORACION_DIAS, ahora: ctx.ahora,
+    serviceId, candidatos, desdeFecha: desde, diasNaturales: ventanaDias, ahora: ctx.ahora,
   });
 
   const cualquiera = args.cualquiera === true || (!args.professional_id && candidatos.length > 1);
@@ -172,7 +182,7 @@ async function consultarDisponibilidad(deps: DepsEjecutor, ctx: ToolContext, arg
     duracion_min: disponibilidad.duracionMin,
     profesionales: cualquiera ? 'cualquiera' : candidatos.map((p) => p.name),
     nota_continuidad: nota,
-    ambito: `Huecos comprobados desde ${desde} (${VENTANA_EXPLORACION_DIAS} días). Para fechas posteriores, vuelve a consultar con esa fecha.`,
+    ambito: `Huecos comprobados desde ${desde} (${ventanaDias} días). Para fechas posteriores, vuelve a consultar con esa fecha.`,
     dias,
     ...(dias.length === 0 ? { sin_huecos: 'No hay huecos en la ventana consultada. Ofrece otra franja o el teléfono de la clínica.' } : {}),
   };

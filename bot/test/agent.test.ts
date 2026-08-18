@@ -28,6 +28,20 @@ test('tabla temporal: días cerrados MARCADOS (no omitidos) y ámbito declarado'
   assert.match(bloque, /SOLO estos 8 días/); // ninguna afirmación absoluta sin su ámbito
 });
 
+test('tabla temporal con cierres del panel: días marcados y el RANGO completo con su mensaje', () => {
+  const bloque = bloqueTemporal({
+    ahora: new Date('2026-08-17T08:00:00Z'), tz: 'Europe/Madrid', diasCalendario: 8, reglasCentro: centro, idioma: 'es',
+    cierres: [{ desde: '2026-08-19', hasta: '2026-08-21', motivo: 'Vacaciones', mensaje: 'Cerrados por vacaciones hasta el 21' }],
+  });
+  assert.match(bloque, /miércoles 2026-08-19 — CERRADO \(Vacaciones\)/);
+  assert.match(bloque, /viernes 2026-08-21 — CERRADO \(Vacaciones\)/);
+  // El rango entero, para "¿cuándo hacéis vacaciones?" sin reconstruir fechas.
+  assert.match(bloque, /del 2026-08-19 al 2026-08-21 \(ambos incluidos\)/);
+  assert.match(bloque, /«Cerrados por vacaciones hasta el 21»/);
+  // El lunes siguiente NO está dentro del cierre.
+  assert.match(bloque, /lunes 2026-08-24\n/);
+});
+
 function pacienteBase(): ContextoPaciente {
   return {
     telefono: '+34612345678',
@@ -83,6 +97,7 @@ function depsResponder(historial: { rol: string; contenido: string; fecha: Date 
       catalogo: {
         catalogo: async () => ({ servicios: [], profesionales: [], porServicio: new Map(), blockerCalendarIds: [] }),
         reglasCentro: async () => centro,
+        cierresDesde: async () => [],
       },
     },
   } as unknown as DepsAgente;
