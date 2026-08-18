@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { toast } from '@/components/ui/use-toast'
-import { Loader2, Search, Save, Users, Phone } from 'lucide-react'
+import { Loader2, Search, Save, Users, Phone, Plus, Pencil, Trash2, X } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface PacienteRow {
@@ -57,21 +57,74 @@ export default function PacientesPage() {
   const [loading, setLoading] = useState(true)
   const [detalle, setDetalle] = useState<Detalle | null>(null)
   const [loadingDetalle, setLoadingDetalle] = useState(false)
-  const [form, setForm] = useState({ nombre: '', apellido: '', idioma_preferido: 'es' })
+  const [form, setForm] = useState({ nombre: '', apellido: '', telefono: '', titular: true, idioma_preferido: 'es' })
   const [saving, setSaving] = useState(false)
+
+  // Alta y borrado
+  const [showNuevo, setShowNuevo] = useState(false)
+  const [nuevo, setNuevo] = useState({ nombre: '', apellido: '', telefono: '', titular: true, idioma_preferido: 'es' })
+  const [creando, setCreando] = useState(false)
+  const [confirmarBorrar, setConfirmarBorrar] = useState<{ id: number; nombre: string } | null>(null)
+  const [borrando, setBorrando] = useState(false)
+
+  async function recargarLista() {
+    const res = await fetch(`/api/pacientes?q=${encodeURIComponent(q)}`)
+    if (res.ok) setPacientes(await res.json())
+  }
 
   useEffect(() => {
     const t = setTimeout(async () => {
       setLoading(true)
       try {
-        const res = await fetch(`/api/pacientes?q=${encodeURIComponent(q)}`)
-        if (res.ok) setPacientes(await res.json())
+        await recargarLista()
       } finally {
         setLoading(false)
       }
     }, 300)
     return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q])
+
+  async function crearPaciente() {
+    setCreando(true)
+    try {
+      const res = await fetch('/api/pacientes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...nuevo, apellido: nuevo.apellido || null }),
+      })
+      const data = await res.json().catch(() => null)
+      if (res.ok) {
+        toast({ title: 'Paciente creado' })
+        setShowNuevo(false)
+        setNuevo({ nombre: '', apellido: '', telefono: '', titular: true, idioma_preferido: 'es' })
+        await recargarLista()
+        if (data?.id) abrirDetalle(data.id)
+      } else {
+        toast({ title: data?.error || 'Error al crear', variant: 'destructive' })
+      }
+    } finally {
+      setCreando(false)
+    }
+  }
+
+  async function eliminarPaciente(id: number) {
+    setBorrando(true)
+    try {
+      const res = await fetch(`/api/pacientes/${id}`, { method: 'DELETE' })
+      const data = await res.json().catch(() => null)
+      if (res.ok) {
+        toast({ title: 'Paciente eliminado' })
+        if (detalle?.paciente.id === id) setDetalle(null)
+        await recargarLista()
+      } else {
+        toast({ title: data?.error || 'No se pudo eliminar', variant: 'destructive' })
+      }
+    } finally {
+      setBorrando(false)
+      setConfirmarBorrar(null)
+    }
+  }
 
   async function abrirDetalle(id: number) {
     setLoadingDetalle(true)
@@ -86,6 +139,8 @@ export default function PacientesPage() {
       setForm({
         nombre: data.paciente.nombre ?? '',
         apellido: data.paciente.apellido ?? '',
+        telefono: data.paciente.telefono ?? '',
+        titular: data.paciente.titular,
         idioma_preferido: data.paciente.idioma_preferido || 'es',
       })
     } finally {
@@ -105,8 +160,7 @@ export default function PacientesPage() {
       if (res.ok) {
         toast({ title: 'Paciente actualizado' })
         abrirDetalle(detalle.paciente.id)
-        const r = await fetch(`/api/pacientes?q=${encodeURIComponent(q)}`)
-        if (r.ok) setPacientes(await r.json())
+        await recargarLista()
       } else {
         const err = await res.json().catch(() => null)
         toast({ title: err?.error || 'Error al guardar', variant: 'destructive' })
@@ -118,10 +172,87 @@ export default function PacientesPage() {
 
   return (
     <div className="p-6 md:p-8 space-y-6 max-w-5xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-bold">Pacientes</h1>
-        <p className="text-muted-foreground text-sm">Busca pacientes y consulta su historial de citas</p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold">Pacientes</h1>
+          <p className="text-muted-foreground text-sm">Busca, crea y edita pacientes; consulta su historial de citas</p>
+        </div>
+        {!showNuevo && (
+          <Button size="sm" onClick={() => setShowNuevo(true)}>
+            <Plus className="h-3.5 w-3.5" /> Nuevo paciente
+          </Button>
+        )}
       </div>
+
+      {/* ─── Alta ─────────────────────────────────────────────────── */}
+      {showNuevo && (
+        <Card>
+          <CardContent className="pt-6 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium">Nuevo paciente</p>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowNuevo(false)}>
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Nombre</Label>
+                <Input value={nuevo.nombre} onChange={e => setNuevo(p => ({ ...p, nombre: e.target.value }))} className="h-9" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Apellido</Label>
+                <Input value={nuevo.apellido} onChange={e => setNuevo(p => ({ ...p, apellido: e.target.value }))} className="h-9" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Teléfono</Label>
+                <Input value={nuevo.telefono} onChange={e => setNuevo(p => ({ ...p, telefono: e.target.value }))} className="h-9" placeholder="612345678" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Tipo</Label>
+                <select
+                  value={nuevo.titular ? 'titular' : 'tercero'}
+                  onChange={e => setNuevo(p => ({ ...p, titular: e.target.value === 'titular' }))}
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  <option value="titular">Titular del número</option>
+                  <option value="tercero">Tercero (comparte número)</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Idioma</Label>
+                <select
+                  value={nuevo.idioma_preferido}
+                  onChange={e => setNuevo(p => ({ ...p, idioma_preferido: e.target.value }))}
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  <option value="es">Castellano</option>
+                  <option value="ca">Catalán</option>
+                </select>
+              </div>
+            </div>
+            <Button size="sm" onClick={crearPaciente} disabled={creando || !nuevo.nombre.trim() || !nuevo.telefono.trim()}>
+              {creando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+              Crear paciente
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ─── Confirmación de borrado ──────────────────────────────── */}
+      {confirmarBorrar && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3">
+          <p className="text-sm">
+            ¿Eliminar la ficha de <span className="font-semibold">{confirmarBorrar.nombre}</span>? Esta acción no se puede deshacer.
+          </p>
+          <div className="flex gap-2 shrink-0">
+            <Button variant="destructive" size="sm" onClick={() => eliminarPaciente(confirmarBorrar.id)} disabled={borrando}>
+              {borrando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+              Eliminar
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setConfirmarBorrar(null)}>Cancelar</Button>
+          </div>
+        </div>
+      )}
 
       {/* ─── Buscador + lista ─────────────────────────────────────── */}
       <Card>
@@ -157,7 +288,8 @@ export default function PacientesPage() {
                     <th className="font-medium pb-3 pr-4">Idioma</th>
                     <th className="font-medium pb-3 pr-4 text-center">Citas</th>
                     <th className="font-medium pb-3 pr-4">Última visita</th>
-                    <th className="font-medium pb-3">Próxima cita</th>
+                    <th className="font-medium pb-3 pr-4">Próxima cita</th>
+                    <th className="pb-3"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -165,7 +297,7 @@ export default function PacientesPage() {
                     <tr
                       key={p.id}
                       onClick={() => abrirDetalle(p.id)}
-                      className={`cursor-pointer transition-colors hover:bg-muted/40 ${detalle?.paciente.id === p.id ? 'bg-primary/5' : ''}`}
+                      className={`group cursor-pointer transition-colors hover:bg-muted/40 ${detalle?.paciente.id === p.id ? 'bg-primary/5' : ''}`}
                     >
                       <td className="py-2.5 pr-4 font-medium whitespace-nowrap">{nombreCompleto(p)}</td>
                       <td className="py-2.5 pr-4 text-muted-foreground whitespace-nowrap">{p.telefono}</td>
@@ -175,7 +307,19 @@ export default function PacientesPage() {
                       <td className="py-2.5 pr-4 uppercase text-muted-foreground">{p.idioma_preferido || '—'}</td>
                       <td className="py-2.5 pr-4 text-center">{p.total_citas}</td>
                       <td className="py-2.5 pr-4 whitespace-nowrap text-muted-foreground">{fmtFecha(p.ultima_visita)}</td>
-                      <td className="py-2.5 whitespace-nowrap text-muted-foreground">{fmtFecha(p.proxima_cita)}</td>
+                      <td className="py-2.5 pr-4 whitespace-nowrap text-muted-foreground">{fmtFecha(p.proxima_cita)}</td>
+                      <td className="py-2.5 text-right whitespace-nowrap">
+                        <div className="inline-flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button variant="ghost" size="icon" className="h-7 w-7"
+                            onClick={e => { e.stopPropagation(); abrirDetalle(p.id) }} title="Editar">
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive"
+                            onClick={e => { e.stopPropagation(); setConfirmarBorrar({ id: p.id, nombre: nombreCompleto(p) }) }} title="Eliminar">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -209,7 +353,7 @@ export default function PacientesPage() {
           </CardHeader>
           <CardContent className="space-y-6">
             {/* Datos editables */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
               <div className="space-y-2">
                 <Label>Nombre</Label>
                 <Input value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} />
@@ -217,6 +361,21 @@ export default function PacientesPage() {
               <div className="space-y-2">
                 <Label>Apellido</Label>
                 <Input value={form.apellido} onChange={e => setForm(f => ({ ...f, apellido: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Teléfono</Label>
+                <Input value={form.telefono} onChange={e => setForm(f => ({ ...f, telefono: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label>Tipo</Label>
+                <select
+                  value={form.titular ? 'titular' : 'tercero'}
+                  onChange={e => setForm(f => ({ ...f, titular: e.target.value === 'titular' }))}
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  <option value="titular">Titular</option>
+                  <option value="tercero">Tercero</option>
+                </select>
               </div>
               <div className="space-y-2">
                 <Label>Idioma preferido</Label>
@@ -230,10 +389,16 @@ export default function PacientesPage() {
                 </select>
               </div>
             </div>
-            <Button size="sm" onClick={guardar} disabled={saving || !form.nombre.trim()}>
-              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-              Guardar
-            </Button>
+            <div className="flex items-center justify-between gap-3">
+              <Button size="sm" onClick={guardar} disabled={saving || !form.nombre.trim() || !form.telefono.trim()}>
+                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                Guardar
+              </Button>
+              <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive"
+                onClick={() => setConfirmarBorrar({ id: detalle.paciente.id, nombre: nombreCompleto(detalle.paciente) })}>
+                <Trash2 className="h-3.5 w-3.5" /> Eliminar paciente
+              </Button>
+            </div>
 
             {/* Comparten teléfono */}
             {detalle.mismo_telefono.length > 0 && (
