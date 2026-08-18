@@ -137,6 +137,19 @@ test('jerarquía: el cierre del CENTRO manda sobre las reglas y excepciones de t
   assert.equal(d.dias[0]!.huecos.length, 0);
 });
 
+test('mover una cita: su PROPIO evento no bloquea el hueco nuevo (ignorarEventoId)', async () => {
+  // Cita existente de Marta 09:00-10:30. Moverla a las 10:00 se solapa consigo misma.
+  const eventos = {
+    'cal-marta': [{ id: 'cita-propia', summary: 'Prueba', start: { dateTime: '2026-08-19T09:00:00+02:00' }, end: { dateTime: '2026-08-19T10:30:00+02:00' } }],
+  };
+  const sin = await calcularDisponibilidad(deps(eventos), { ...args, diasNaturales: 1 });
+  assert.ok(!sin.dias[0]!.huecos.some((h) => h.inicio.toISOString() === '2026-08-19T08:00:00.000Z'),
+    'sin exclusión, las 10:00 locales están ocupadas por la propia cita');
+  const con = await calcularDisponibilidad(deps(eventos), { ...args, diasNaturales: 1, ignorarEventoId: 'cita-propia' });
+  assert.ok(con.dias[0]!.huecos.some((h) => h.inicio.toISOString() === '2026-08-19T08:00:00.000Z'),
+    'con exclusión, las 10:00 locales quedan libres para el traslado');
+});
+
 test('cierre parcial (solo unas horas) NO marca el día como cerrado', async () => {
   const d = await calcularDisponibilidad(deps({
     'cal-cierres': [{ id: 'p1', summary: 'formación', start: { dateTime: '2026-08-19T09:00:00+02:00' }, end: { dateTime: '2026-08-19T13:00:00+02:00' } }],

@@ -38,6 +38,8 @@ export interface ArgsDisponibilidad {
   desdeFecha: string;           // 'YYYY-MM-DD'
   diasNaturales: number;        // ventana a explorar
   ahora?: Date;
+  /** Al MOVER una cita, su propio evento no cuenta como ocupación (lección de balta). */
+  ignorarEventoId?: string;
 }
 
 export async function calcularDisponibilidad(deps: DepsDisponibilidad, args: ArgsDisponibilidad): Promise<Disponibilidad> {
@@ -89,7 +91,8 @@ export async function calcularDisponibilidad(deps: DepsDisponibilidad, args: Arg
     ]);
     let ocupacion: Intervalo[] = [];
     try {
-      const eventos = await calendario.listarEventos(pro.calendarId, desde, hasta);
+      const eventos = (await calendario.listarEventos(pro.calendarId, desde, hasta))
+        .filter((e) => e.id !== args.ignorarEventoId);
       ocupacion = ocupacionDesdeEventos(eventos, settings.timezone);
     } catch (err) {
       // Un profesional con calendario caído no bloquea al resto, pero él no ofrece huecos.
@@ -169,7 +172,7 @@ export async function calcularDisponibilidad(deps: DepsDisponibilidad, args: Arg
 /** ¿Sigue disponible exactamente este inicio para este profesional? Revalidación antes de escribir. */
 export async function sigueDisponible(
   deps: DepsDisponibilidad,
-  args: { serviceId: number; professionalId: number; inicio: Date; ahora?: Date },
+  args: { serviceId: number; professionalId: number; inicio: Date; ahora?: Date; ignorarEventoId?: string },
 ): Promise<boolean> {
   const settings = await deps.config.settings();
   const pro = await deps.catalogo.profesional(args.professionalId);
@@ -177,6 +180,7 @@ export async function sigueDisponible(
   const fecha = fechaLocal(args.inicio, settings.timezone);
   const disponibilidad = await calcularDisponibilidad(deps, {
     serviceId: args.serviceId, candidatos: [pro], desdeFecha: fecha, diasNaturales: 1, ahora: args.ahora,
+    ignorarEventoId: args.ignorarEventoId,
   });
   return disponibilidad.dias[0]!.huecos.some((h) => h.inicio.getTime() === args.inicio.getTime());
 }

@@ -196,6 +196,7 @@ async function consultarDisponibilidad(deps: DepsEjecutor, ctx: ToolContext, arg
 /** Nunca se reserva el instante que teclee el modelo: se re-ancla a un hueco real. */
 async function resolverInicio(
   deps: DepsEjecutor, ctx: ToolContext, serviceId: number, candidatos: Profesional[], inicioStr: string,
+  ignorarEventoId?: string,
 ): Promise<{ inicio: Date; disponibles: number[] } | null> {
   const parseado = new Date(inicioStr);
   if (Number.isNaN(parseado.getTime())) return null;
@@ -212,7 +213,7 @@ async function resolverInicio(
   }
 
   const disponibilidad = await calcularDisponibilidad(depsDisponibilidad(deps), {
-    serviceId, candidatos, desdeFecha: fecha, diasNaturales: 1, ahora: ctx.ahora,
+    serviceId, candidatos, desdeFecha: fecha, diasNaturales: 1, ahora: ctx.ahora, ignorarEventoId,
   });
   const huecos = disponibilidad.dias[0]!.huecos;
 
@@ -408,7 +409,8 @@ async function confirmarCita(deps: DepsEjecutor, ctx: ToolContext): Promise<unkn
     ? candidatos.filter((p) => p.id === propuesta.professionalId)
     : candidatos;
   const resuelto = candidatosFinales.length
-    ? await resolverInicio(deps, ctx, propuesta.serviceId, candidatosFinales, propuesta.inicio.toISOString())
+    ? await resolverInicio(deps, ctx, propuesta.serviceId, candidatosFinales, propuesta.inicio.toISOString(),
+        propuesta.sustituyeEventId ?? undefined) // la cita a sustituir tampoco bloquea su relevo
     : null;
   if (!resuelto) {
     await deps.confirmaciones.borrar(ctx.sesion);
@@ -588,8 +590,9 @@ async function modificarCita(deps: DepsEjecutor, ctx: ToolContext, args: Record<
 
   const pro = await deps.catalogo.profesional(cita.professionalId);
   if (!pro) return { no_gestionable: true };
-  // Mismo servicio y mismo profesional: solo cambia la hora.
-  const resuelto = await resolverInicio(deps, ctx, cita.serviceId, [pro], String(args.nuevo_inicio ?? ''));
+  // Mismo servicio y mismo profesional: solo cambia la hora. El propio evento
+  // no cuenta como ocupación, o "una hora más tarde" chocaría consigo mismo.
+  const resuelto = await resolverInicio(deps, ctx, cita.serviceId, [pro], String(args.nuevo_inicio ?? ''), cita.googleEventId);
   if (!resuelto) {
     ctx.consultoDisponibilidad = true;
     return {
