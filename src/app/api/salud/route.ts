@@ -7,6 +7,10 @@ import { query } from '@/lib/db'
  * zombi con otro Environment), y eso hay que poder verlo SIN poder entrar.
  * No revela credenciales: solo el NOMBRE de la base y qué esquema ve.
  */
+// Sin esto Next lo prerenderiza en el BUILD (no usa nada de la request) y
+// congela la respuesta de un entorno sin base de datos.
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
   const url = process.env.DATABASE_URL ?? ''
   let base = 'desconocida'
