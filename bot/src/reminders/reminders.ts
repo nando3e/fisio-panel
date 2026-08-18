@@ -111,12 +111,17 @@ async function componerTexto(deps: DepsRecordatorios, cita: Cita, cfg: ConfigRec
 /** Aviso de propuesta sin respuesta: una sola vez, silenciada si el cliente ya escribió. */
 export async function rondaConfirmacionesPendientes(deps: {
   config: ConfigNegocio;
-  confirmaciones: { pendientesDeAviso(seg: number): Promise<Array<{ telefono: string }>>; marcarAvisada(t: string): Promise<void> };
+  confirmaciones: {
+    pendientesDeAviso(seg: number): Promise<Array<{ telefono: string }>>;
+    marcarAvisada(t: string): Promise<void>;
+    purgarSimuladas(horas?: number): Promise<number>;
+  };
   pacientes: PacientesRepo;
   textos: TextosRepo;
   memoria: ChatMemoryRepo;
   entregar: (telefono: string, texto: string) => Promise<void>;
 }): Promise<void> {
+  await deps.confirmaciones.purgarSimuladas().catch(() => {});
   const segundos = await deps.config.entero('segundos_confirmacion_pendiente');
   const pendientes = await deps.confirmaciones.pendientesDeAviso(segundos);
   for (const p of pendientes) {

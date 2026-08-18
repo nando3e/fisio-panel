@@ -116,14 +116,28 @@ export class ConfirmacionesRepo {
     await this.pool.query('UPDATE confirmaciones_pendientes SET silenciado = TRUE WHERE telefono = $1', [telefono]);
   }
 
-  /** Propuestas sin respuesta que toca avisar (una sola vez por propuesta). */
+  /**
+   * Propuestas sin respuesta que toca avisar (una sola vez por propuesta).
+   * Las sesiones del simulador (sim:) se excluyen: no hay nadie a quien enviar,
+   * y la entrega fallida las reintentaría cada ronda para siempre.
+   */
   async pendientesDeAviso(segundos: number): Promise<Confirmacion[]> {
     const res = await this.pool.query(
       `SELECT * FROM confirmaciones_pendientes
-       WHERE avisado = FALSE AND silenciado = FALSE AND created_at < NOW() - make_interval(secs => $1)`,
+       WHERE avisado = FALSE AND silenciado = FALSE AND telefono NOT LIKE 'sim:%'
+         AND created_at < NOW() - make_interval(secs => $1)`,
       [segundos],
     );
     return res.rows.map(aConfirmacion);
+  }
+
+  /** Limpieza de propuestas del simulador: caducan con la ventana de conversación. */
+  async purgarSimuladas(horas = 6): Promise<number> {
+    const res = await this.pool.query(
+      `DELETE FROM confirmaciones_pendientes WHERE telefono LIKE 'sim:%' AND created_at < NOW() - make_interval(hours => $1)`,
+      [horas],
+    );
+    return res.rowCount ?? 0;
   }
 
   async marcarAvisada(telefono: string): Promise<void> {
