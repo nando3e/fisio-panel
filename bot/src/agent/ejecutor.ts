@@ -145,20 +145,26 @@ async function consultarDisponibilidad(deps: DepsEjecutor, ctx: ToolContext, arg
   const cualquiera = args.cualquiera === true || (!args.professional_id && candidatos.length > 1);
   const porNombre = new Map(candidatos.map((p) => [p.id, p.name]));
   const dias: unknown[] = [];
+  let diasConHuecos = 0;
+  let cierreYaIncluido = false; // unas vacaciones largas no deben desplazar a los días con hueco
   for (const dia of disponibilidad.dias) {
     const esPedido = fechaPedida === dia.fecha;
-    if (!dia.huecos.length && !esPedido) continue;
+    const esCierre = dia.cierre !== undefined;
+    if (!dia.huecos.length && !esPedido && (!esCierre || cierreYaIncluido)) continue;
+    if (esCierre && !dia.huecos.length) cierreYaIncluido = true;
     dias.push({
       fecha: dia.fecha,
       dia: fechaLegible(dia.fecha, ctx.idioma),
       motivo: dia.motivo,
+      ...(esCierre ? { cierre: dia.cierre ?? 'el centro cierra ese día (motivo sin indicar en el calendario)' } : {}),
       huecos: dia.huecos.slice(0, MAX_HUECOS_POR_DIA).map((h) => ({
         hora: horaLocal(h.inicio, settings.timezone),
         iso: h.inicio.toISOString(),
         ...(cualquiera ? {} : { profesionales: h.professionalIds.map((id) => porNombre.get(id)).filter(Boolean) }),
       })),
     });
-    if (dias.length >= diasAMostrar + (esPedido && !dia.huecos.length ? 1 : 0)) break;
+    if (dia.huecos.length) diasConHuecos++;
+    if (diasConHuecos >= diasAMostrar) break;
   }
 
   return {

@@ -223,7 +223,7 @@ export class Aplicacion {
 
     const paciente = await resolverContextoPaciente(
       { pacientes: this.pacientes, citas: this.citas, memoria: this.memoria, config: this.config, catalogo: this.catalogo },
-      telefono, ahora,
+      telefono, ahora, sesion,
     );
     const ctx: ToolContext = {
       telefono,     // identidad del paciente: siempre el número real

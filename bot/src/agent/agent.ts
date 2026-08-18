@@ -110,8 +110,12 @@ export async function responder(deps: DepsAgente, ctx: ToolContext, mensaje: str
   try {
     const { system, versiones: v } = await componerSystem(deps, ctx);
     versiones = v;
-    const historial = historialAMensajes(await deps.memoria.historial(ctx.telefono));
-    const mensajes: MensajeChat[] = [...historial, { rol: 'usuario', contenido: mensaje }];
+    // La memoria vive bajo la SESIÓN (`sim:<tel>` en el simulador), no bajo la identidad,
+    // y ya contiene el mensaje en curso: recibir()/simular() lo registran antes del turno.
+    const historial = historialAMensajes(await deps.memoria.historial(ctx.sesion));
+    const mensajes: MensajeChat[] = historial.length && historial[historial.length - 1]!.rol === 'usuario'
+      ? historial
+      : [...historial, { rol: 'usuario', contenido: mensaje }];
 
     let avisoHuecosEnviado = false;
     for (let iteracion = 1; iteracion <= MAX_ITERACIONES; iteracion++) {

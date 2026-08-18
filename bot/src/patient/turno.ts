@@ -59,13 +59,13 @@ export async function resolverRecurrente(
   }
 }
 
-export async function resolverContextoPaciente(deps: DepsTurno, telefono: string, ahora: Date): Promise<ContextoPaciente> {
+export async function resolverContextoPaciente(deps: DepsTurno, telefono: string, ahora: Date, sesion = telefono): Promise<ContextoPaciente> {
   const candidatos = await deps.pacientes.porTelefono(telefono);
   const titular = candidatos.find((p) => p.titular) ?? null;
 
-  // Idioma: ficha si existe; si no, detección; si no, default del panel.
+  // Idioma: ficha si existe; si no, detección sobre la CONVERSACIÓN (sesión); si no, default del panel.
   let idioma = (titular?.idiomaPreferido as 'ca' | 'es' | null) ?? null;
-  const detectado = detectarIdioma(await deps.memoria.ultimosDelCliente(telefono));
+  const detectado = detectarIdioma(await deps.memoria.ultimosDelCliente(sesion));
   if (detectado && detectado !== idioma) {
     idioma = detectado;
     if (titular) await deps.pacientes.ponerIdioma(titular.id, detectado).catch(() => {});

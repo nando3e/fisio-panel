@@ -3,9 +3,9 @@
  * huecos por sustracción, candidatos por servicio y continuidad.
  */
 
-import { huecosDelDia, duracionServicio, type Intervalo } from './slots';
+import { huecosDelDia, duracionServicio, fusionarIntervalos, type Intervalo } from './slots';
 import { ventanasEfectivas } from './horarios';
-import { ocupacionDesdeEventos } from './ocupacion';
+import { eventoAIntervalo, ocupacionDesdeEventos } from './ocupacion';
 import { fechaLocal, instanteLocal, sumarDias } from './tiempo';
 import type { CalendarioPort } from '../calendar/google';
 import type { CatalogoRepo, Profesional } from '../db/repos/catalogo';
@@ -16,6 +16,8 @@ export interface DiaDisponibilidad {
   fecha: string;
   huecos: Hueco[];
   motivo: 'ok' | 'cerrado' | 'completo';
+  /** Presente si el día lo tapa un evento del calendario de cierres; el valor es su título (o null si no tiene). */
+  cierre?: string | null;
 }
 export interface Disponibilidad {
   dias: DiaDisponibilidad[];
@@ -53,17 +55,24 @@ export async function calcularDisponibilidad(deps: DepsDisponibilidad, args: Arg
   const cat = await catalogo.catalogo();
 
   // Ocupación del blocker (cierres del centro): una lectura por calendario blocker.
+  // Se conservan también los eventos con su título, para poder explicar el MOTIVO del cierre.
   const blocker: Intervalo[] = [];
+  const eventosCierre: { intervalo: Intervalo; nota: string | null }[] = [];
   for (const calId of cat.blockerCalendarIds) {
     try {
       const eventos = await calendario.listarEventos(calId, desde, hasta);
       blocker.push(...ocupacionDesdeEventos(eventos, settings.timezone));
+      for (const e of eventos) {
+        const intervalo = eventoAIntervalo(e, settings.timezone);
+        if (intervalo) eventosCierre.push({ intervalo, nota: e.summary?.trim() || null });
+      }
     } catch (err) {
       // Un blocker ilegible no puede abrir el centro por accidente: se bloquea todo el rango.
       console.error(`[disponibilidad] error leyendo blocker ${calId}:`, err);
       blocker.push({ inicio: desde.getTime(), fin: hasta.getTime() });
     }
   }
+  const blockerFusionado = fusionarIntervalos(blocker);
 
   // Por profesional candidato: reglas, excepciones y ocupación (una lectura de Google cada uno).
   const porProfesional = new Map<number, { ocupacion: Intervalo[]; reglas: Awaited<ReturnType<CatalogoRepo['reglasProfesional']>>; excepciones: Awaited<ReturnType<CatalogoRepo['excepcionesProfesional']>> }>();
@@ -107,7 +116,31 @@ export async function calcularDisponibilidad(deps: DepsDisponibilidad, args: Arg
       }
     }
     const huecos = [...porInicio.values()].sort((a, b) => a.inicio.getTime() - b.inicio.getTime());
-    dias.push({ fecha, huecos, motivo: huecos.length ? 'ok' : algunaVentana ? 'completo' : 'cerrado' });
+
+    // Cierre del centro: si el blocker tapa TODAS las ventanas del centro ese día,
+    // el día no está "completo" sino CERRADO (vacaciones/festivo), con su motivo.
+    let cierre: string | null | undefined;
+    if (!huecos.length) {
+      const ventanasCentro = ventanasEfectivas({ fecha, reglasCentro, reglasProfesional: [], excepcionesProfesional: [] });
+      if (ventanasCentro.length) {
+        const cubierto = ventanasCentro.every((v) => {
+          const i = instanteLocal(fecha, v.desde, settings.timezone).getTime();
+          const f = instanteLocal(fecha, v.hasta, settings.timezone).getTime();
+          return blockerFusionado.some((b) => b.inicio <= i && b.fin >= f);
+        });
+        if (cubierto) {
+          const diaIni = instanteLocal(fecha, 0, settings.timezone).getTime();
+          const diaFin = instanteLocal(sumarDias(fecha, 1), 0, settings.timezone).getTime();
+          cierre = eventosCierre.find((c) => c.nota && c.intervalo.inicio < diaFin && c.intervalo.fin > diaIni)?.nota ?? null;
+        }
+      }
+    }
+
+    dias.push({
+      fecha, huecos,
+      motivo: huecos.length ? 'ok' : cierre !== undefined || !algunaVentana ? 'cerrado' : 'completo',
+      ...(cierre !== undefined ? { cierre } : {}),
+    });
   }
 
   return { dias, duracionMin, candidatos: args.candidatos };

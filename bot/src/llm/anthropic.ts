@@ -7,21 +7,31 @@ export function crearClienteAnthropic(apiKey: string, modelo: string): ClienteLl
   return {
     modelo,
     async completar({ system, mensajes, tools }): Promise<RespuestaLlm> {
-      const mensajesApi: Anthropic.MessageParam[] = mensajes.map((m) => {
-        if (m.rol === 'usuario') return { role: 'user', content: m.contenido };
-        if (m.rol === 'asistente') {
+      // Mensajes de usuario consecutivos (ráfagas del historial) se fusionan en uno:
+      // la API exige roles alternados.
+      const mensajesApi: Anthropic.MessageParam[] = [];
+      const anexar = (role: 'user' | 'assistant', bloques: Anthropic.ContentBlockParam[]) => {
+        const ultimo = mensajesApi[mensajesApi.length - 1];
+        if (ultimo && ultimo.role === role && Array.isArray(ultimo.content)) {
+          (ultimo.content as Anthropic.ContentBlockParam[]).push(...bloques);
+        } else {
+          mensajesApi.push({ role, content: bloques });
+        }
+      };
+      for (const m of mensajes) {
+        if (m.rol === 'usuario') {
+          anexar('user', [{ type: 'text', text: m.contenido }]);
+        } else if (m.rol === 'asistente') {
           const contenido: Anthropic.ContentBlockParam[] = [];
           if (m.contenido) contenido.push({ type: 'text', text: m.contenido });
           for (const t of m.tools ?? []) contenido.push({ type: 'tool_use', id: t.id, name: t.nombre, input: t.args });
-          return { role: 'assistant', content: contenido.length ? contenido : [{ type: 'text', text: '…' }] };
-        }
-        return {
-          role: 'user',
-          content: m.resultados.map((r): Anthropic.ToolResultBlockParam => ({
+          anexar('assistant', contenido.length ? contenido : [{ type: 'text', text: '…' }]);
+        } else {
+          anexar('user', m.resultados.map((r): Anthropic.ToolResultBlockParam => ({
             type: 'tool_result', tool_use_id: r.id, content: r.contenido,
-          })),
-        };
-      });
+          })));
+        }
+      }
 
       try {
         const res = await cliente.messages.create({

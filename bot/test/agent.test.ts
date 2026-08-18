@@ -1,7 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ofreceHuecos } from '../src/agent/agent';
+import { ofreceHuecos, responder, type DepsAgente } from '../src/agent/agent';
 import { bloqueTemporal, bloquePaciente } from '../src/agent/contexto';
+import type { ToolContext } from '../src/agent/ejecutor';
+import type { MensajeChat } from '../src/llm/tipos';
 import type { ContextoPaciente } from '../src/patient/turno';
 import type { ReglaHoraria } from '../src/db/repos/catalogo';
 
@@ -57,4 +59,64 @@ test('número desconocido: pedir nombre solo tras elegir hora', () => {
   const bloque = bloquePaciente(nuevo, 'preferida');
   assert.match(bloque, /NO registrado/);
   assert.match(bloque, /SOLO cuando ya haya elegido hora/);
+});
+
+// ── Memoria del turno: por SESIÓN y sin duplicar el mensaje en curso ─────────
+
+function depsResponder(historial: { rol: string; contenido: string; fecha: Date }[], capturas: { clave?: string; mensajes?: MensajeChat[] }): DepsAgente {
+  return {
+    llm: {
+      modelo: 'guionizado',
+      completar: async ({ mensajes }: { mensajes: MensajeChat[] }) => {
+        capturas.mensajes = mensajes;
+        return { texto: 'vale', tools: [], tokensIn: 0, tokensOut: 0 };
+      },
+    },
+    prompts: { systemPrompt: async () => ({ texto: 'SYSTEM', versiones: { identidad: 1 } }) },
+    memoria: { historial: async (clave: string) => { capturas.clave = clave; return historial; } },
+    ejecutor: {
+      config: {
+        settings: async () => ({ slotMinutes: [0, 30], paso: 30, timezone: 'Europe/Madrid', telefonoNegocio: null }),
+        valor: async () => '',
+        entero: async () => 8,
+      },
+      catalogo: {
+        catalogo: async () => ({ servicios: [], profesionales: [], porServicio: new Map(), blockerCalendarIds: [] }),
+        reglasCentro: async () => centro,
+      },
+    },
+  } as unknown as DepsAgente;
+}
+
+function ctxResponder(): ToolContext {
+  return {
+    telefono: '+34612345678', sesion: 'sim:+34612345678', ahora: new Date('2026-08-18T08:00:00Z'),
+    idioma: 'es', continuidadModo: 'preferida', paciente: pacienteBase(),
+    consultoDisponibilidad: false, rechazosSinDeclaracion: 0, simulado: true,
+  } as ToolContext;
+}
+
+test('responder carga el historial por SESIÓN (regresión: el simulador leía por teléfono)', async () => {
+  const capturas: { clave?: string; mensajes?: MensajeChat[] } = {};
+  const historial = [
+    { rol: 'human', contenido: 'hola', fecha: new Date() },
+    { rol: 'ai', contenido: '¡Hola! ¿Qué necesitas?', fecha: new Date() },
+    { rol: 'human', contenido: 'quiero cita', fecha: new Date() },
+  ];
+  await responder(depsResponder(historial, capturas), ctxResponder(), 'quiero cita');
+  assert.equal(capturas.clave, 'sim:+34612345678');
+  // El mensaje en curso ya viene en el historial: NO se añade otra vez.
+  assert.equal(capturas.mensajes!.length, 3);
+  const ultimo = capturas.mensajes![capturas.mensajes!.length - 1]!;
+  assert.equal(ultimo.rol, 'usuario');
+  assert.equal((ultimo as { contenido: string }).contenido, 'quiero cita');
+  // Y el turno anterior es visible para el modelo.
+  assert.ok(capturas.mensajes!.some((m) => m.rol === 'asistente' && (m as { contenido?: string }).contenido?.includes('¿Qué necesitas?')));
+});
+
+test('responder añade el mensaje solo si el historial no termina en él (red de seguridad)', async () => {
+  const capturas: { clave?: string; mensajes?: MensajeChat[] } = {};
+  await responder(depsResponder([], capturas), ctxResponder(), 'quiero cita');
+  assert.equal(capturas.mensajes!.length, 1);
+  assert.equal((capturas.mensajes![0] as { contenido: string }).contenido, 'quiero cita');
 });
