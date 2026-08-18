@@ -30,7 +30,23 @@ export async function sincronizarCalendario(deps: DepsSincronizar, desde: Date, 
 
       for (const evento of vigentes) {
         if (!evento.start?.dateTime || !evento.end?.dateTime) continue; // día completo: solo ocupa
-        if (await deps.citas.porEventId(evento.id)) continue;           // ya registrado
+
+        // Ya registrado: detectar MOVIMIENTOS a mano (hora o calendario). Sin esto,
+        // el recordatorio saldría con la hora vieja (lección de balta).
+        const existente = await deps.citas.porEventId(evento.id);
+        if (existente) {
+          const inicio = new Date(evento.start.dateTime);
+          const fin = new Date(evento.end.dateTime);
+          if (existente.startTime.getTime() !== inicio.getTime() || existente.endTime.getTime() !== fin.getTime()) {
+            // reprogramar resetea el recordatorio: la hora nueva recibe su aviso.
+            await deps.citas.reprogramar(evento.id, inicio, fin);
+          }
+          if (existente.professionalId !== pro.id) {
+            await deps.citas.reasignarProfesional(evento.id, pro.id);
+          }
+          continue;
+        }
+
         const { nombre, telefono } = extraerContacto(evento);
         let pacienteId: number | null = null;
         if (telefono) {

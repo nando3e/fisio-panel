@@ -97,6 +97,15 @@ export class CitasRepo {
     );
   }
 
+  /** El evento apareció en el calendario de OTRO profesional (arrastrado a mano). */
+  async reasignarProfesional(googleEventId: string, professionalId: number): Promise<void> {
+    await this.pool.query(
+      `UPDATE citas SET professional_id = $2, estado = 'confirmada', updated_at = NOW()
+       WHERE google_event_id = $1`,
+      [googleEventId, professionalId],
+    );
+  }
+
   /** Alta desde sincronización (evento apuntado a mano en Google). */
   async altaSincronizada(datos: {
     googleEventId: string; professionalId: number; pacienteId: number | null;
