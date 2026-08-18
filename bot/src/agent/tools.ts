@@ -31,7 +31,7 @@ export const TOOLS: DefTool[] = [
         professional_id: { type: 'integer', description: 'Omitir si el paciente dijo "cualquiera"' },
         motivo: { type: 'string', description: 'Motivo de consulta si lo ha contado (p. ej. "dolor de rodilla"). Opcional.' },
         nombre: { type: 'string', description: 'Nombre de pila del paciente que se va a visitar' },
-        apellido: { type: 'string' },
+        apellido: { type: 'string', description: 'Apellido del paciente que se visita. OBLIGATORIO para reservar (identifica al paciente en la agenda); si no lo sabes, pídelo.' },
         para_otra_persona: { type: 'boolean', description: 'true si la cita es para otra persona distinta del titular del número' },
         sustituye_a: { type: 'string', description: 'Si el paciente ya tiene cita: "YYYY-MM-DD HH:MM" de la cita que esta sustituye, o "ninguna" si quiere conservar las dos' },
       },

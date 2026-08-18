@@ -2,12 +2,13 @@
  * Formato del título de los eventos que crea el bot, y parseo tolerante de los
  * títulos que el negocio escribe a mano ("Joan 666555444", "Marta tel. 666 55 54 44").
  * El MOTIVO va SIEMPRE en la descripción, nunca en el título (dato de salud).
+ * El TELÉFONO tampoco va en el título (no cabe y estorba): vive en la descripción,
+ * de donde lo recupera la sincronización si hace falta.
  */
 
-export function componerTitulo(nombre: string, apellido: string | null, telefonoE164: string, codigoServicio: string): string {
-  const nacional = telefonoE164.replace(/^\+34/, '');
+export function componerTitulo(nombre: string, apellido: string | null, codigoServicio: string): string {
   const completo = [nombre, apellido].filter(Boolean).join(' ');
-  return `${completo} - ${nacional} - ${codigoServicio}`;
+  return `${completo} - ${codigoServicio}`;
 }
 
 export interface TituloParseado { nombre: string | null; telefono: string | null }
@@ -30,4 +31,16 @@ export function parsearTituloLibre(titulo: string): TituloParseado {
     .trim();
   if (sinTelefono.length >= 2) nombre = sinTelefono;
   return { nombre, telefono };
+}
+
+/**
+ * Contacto de un evento: nombre del título; teléfono del título o, si no está,
+ * de la descripción (los eventos del bot llevan ahí su "Tel: +34…", y un apunte
+ * a mano puede ponerlo donde prefiera).
+ */
+export function extraerContacto(evento: { summary?: string | null; description?: string | null }): TituloParseado {
+  const delTitulo = parsearTituloLibre(evento.summary ?? '');
+  if (delTitulo.telefono) return delTitulo;
+  const deDescripcion = parsearTituloLibre(evento.description ?? '');
+  return { nombre: delTitulo.nombre, telefono: deDescripcion.telefono };
 }

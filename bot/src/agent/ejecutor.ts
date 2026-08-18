@@ -277,6 +277,12 @@ async function proponerCita(deps: DepsEjecutor, ctx: ToolContext, args: Record<s
   if (nombre && esRelleno(nombre)) {
     return { nombre_invalido: true, detalle: 'Ese nombre no es válido. Pide el nombre real del paciente; no inventes ninguno.' };
   }
+  // El apellido identifica al paciente en el calendario de los fisios: sin él no se propone.
+  // (Un tercero usa el suyo; el titular puede tenerlo ya en su ficha.)
+  const apellidoConocido = apellido ?? (paraOtraPersona ? null : titular?.apellido ?? null);
+  if (!apellidoConocido) {
+    return { falta_apellido: true, detalle: 'Falta el APELLIDO del paciente que se visita (imprescindible para la agenda). Pídelo y repite proponer_cita con nombre y apellido.' };
+  }
 
   // Continuidad del paciente que SE VISITA: para un tercero manda su propio historial.
   let ctxContinuidad = ctx;
@@ -345,7 +351,7 @@ async function proponerCita(deps: DepsEjecutor, ctx: ToolContext, args: Record<s
   const escribe = titular?.nombre ?? null;
   const tarjeta = tarjetaCita({
     idioma: ctx.idioma, servicio: servicio.name,
-    paraNombre: quien ? `${quien}${apellido ? ` ${apellido}` : ''}` : null,
+    paraNombre: quien ? `${quien}${apellidoConocido ? ` ${apellidoConocido}` : ''}` : null,
     fisio: nombreFisio, inicio: resuelto.inicio, tz: settings.timezone,
   });
   const resumen = [
@@ -485,7 +491,7 @@ async function confirmarCita(deps: DepsEjecutor, ctx: ToolContext): Promise<unkn
     return { ...respuesta, simulada: true, detalle: 'MODO PRUEBAS: la cita NO se ha escrito en la agenda real. Envía `mensaje` TAL CUAL igualmente.' };
   }
 
-  const titulo = componerTitulo(nombrePaciente ?? 'Paciente', propuesta.paraApellido, ctx.telefono, servicio.code);
+  const titulo = componerTitulo(nombrePaciente ?? 'Paciente', apellidoPaciente, servicio.code);
   const descripcion = [
     `Tel: ${ctx.telefono}`,
     propuesta.motivo ? `Motivo: ${propuesta.motivo}` : null, // dato de salud: descripción, nunca título
