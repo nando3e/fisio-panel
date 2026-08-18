@@ -15,8 +15,9 @@ export interface Hueco { inicio: Date; professionalIds: number[] }
 export interface DiaDisponibilidad {
   fecha: string;
   huecos: Hueco[];
-  motivo: 'ok' | 'cerrado' | 'completo';
-  /** Presente si el día lo tapa un evento del calendario de cierres; el valor es su título (o null si no tiene). */
+  /** 'sin_profesional' = el CENTRO abre pero los candidatos no pasan consulta (excepción o reglas). */
+  motivo: 'ok' | 'cerrado' | 'completo' | 'sin_profesional';
+  /** Presente si el día lo tapa un cierre del panel o un evento del calendario de cierres; el valor es su mensaje/título. */
   cierre?: string | null;
 }
 export interface Disponibilidad {
@@ -132,9 +133,11 @@ export async function calcularDisponibilidad(deps: DepsDisponibilidad, args: Arg
     // Cierre del centro: si el blocker tapa TODAS las ventanas del centro ese día,
     // el día no está "completo" sino CERRADO (vacaciones/festivo), con su motivo.
     let cierre: string | null | undefined;
+    let centroAbre = true;
     if (!huecos.length) {
       const ventanasCentro = ventanasEfectivas({ fecha, reglasCentro, reglasProfesional: [], excepcionesProfesional: [] });
-      if (ventanasCentro.length) {
+      centroAbre = ventanasCentro.length > 0;
+      if (centroAbre) {
         const cubierto = ventanasCentro.every((v) => {
           const i = instanteLocal(fecha, v.desde, settings.timezone).getTime();
           const f = instanteLocal(fecha, v.hasta, settings.timezone).getTime();
@@ -150,7 +153,12 @@ export async function calcularDisponibilidad(deps: DepsDisponibilidad, args: Arg
 
     dias.push({
       fecha, huecos,
-      motivo: huecos.length ? 'ok' : cierre !== undefined || !algunaVentana ? 'cerrado' : 'completo',
+      // Distinción crítica: "cerrado" es la CLÍNICA; "sin_profesional" es que el
+      // centro abre pero estos candidatos no pasan consulta (excepción/reglas).
+      motivo: huecos.length ? 'ok'
+        : cierre !== undefined || !centroAbre ? 'cerrado'
+        : !algunaVentana ? 'sin_profesional'
+        : 'completo',
       ...(cierre !== undefined ? { cierre } : {}),
     });
   }

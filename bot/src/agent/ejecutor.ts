@@ -166,6 +166,9 @@ async function consultarDisponibilidad(deps: DepsEjecutor, ctx: ToolContext, arg
       fecha: dia.fecha,
       dia: fechaLegible(dia.fecha, ctx.idioma),
       motivo: dia.motivo,
+      ...(dia.motivo === 'sin_profesional'
+        ? { detalle: 'La clínica SÍ abre ese día: es este profesional quien no pasa consulta. NO digas que la clínica está cerrada; di que ese día no está y ofrece su siguiente día disponible u otro profesional.' }
+        : {}),
       ...(esCierre ? { cierre: dia.cierre ?? 'el centro cierra ese día (motivo sin indicar en el calendario)' } : {}),
       huecos: dia.huecos.slice(0, MAX_HUECOS_POR_DIA).map((h) => ({
         hora: horaLocal(h.inicio, settings.timezone),

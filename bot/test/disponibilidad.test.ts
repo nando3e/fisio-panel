@@ -109,13 +109,22 @@ test('jerarquía: excepción "cerrado" del profesional lo quita SOLO a él, aunq
   assert.ok(d.dias[1]!.huecos.some((h) => h.professionalIds.includes(4)));
 });
 
-test('jerarquía: si el único candidato tiene excepción, el día queda "cerrado" pero SIN mensaje de cierre del centro', async () => {
+test('jerarquía: si el único candidato tiene excepción, el día es "sin_profesional", NUNCA "cerrado" (la clínica abre)', async () => {
   const d = await calcularDisponibilidad(
     deps({}, [], { 4: [{ fecha: '2026-08-19', hasta: null, tipo: 'cerrado', ventanas: null }] }),
     { ...args, candidatos: [carmen] as never },
   );
-  assert.equal(d.dias[0]!.motivo, 'cerrado');
+  assert.equal(d.dias[0]!.motivo, 'sin_profesional');
   assert.equal(d.dias[0]!.cierre, undefined); // no es un cierre del centro
+});
+
+test('fin de semana (el centro no abre por horario semanal) sigue siendo "cerrado"', async () => {
+  const d = await calcularDisponibilidad(deps({}), {
+    ...args, candidatos: [marta] as never, desdeFecha: '2026-08-22', diasNaturales: 1, // sábado
+    ahora: new Date('2026-08-22T06:00:00Z'),
+  });
+  assert.equal(d.dias[0]!.motivo, 'cerrado');
+  assert.equal(d.dias[0]!.cierre, undefined);
 });
 
 test('jerarquía: el cierre del CENTRO manda sobre las reglas y excepciones de todos los profesionales', async () => {
