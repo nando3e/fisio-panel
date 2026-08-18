@@ -10,7 +10,7 @@ import type { ChatMemoryRepo } from '../db/repos/conversacion';
 import type { DetalleTool } from '../db/repos/traces';
 import { TOOLS } from './tools';
 import { ejecutarTool, type DepsEjecutor, type ToolContext } from './ejecutor';
-import { bloqueCatalogo, bloqueNegocio, bloquePaciente, bloqueTemporal } from './contexto';
+import { bloqueCatalogo, bloqueNegocio, bloquePaciente, bloquePropuesta, bloqueTemporal } from './contexto';
 import { fechaLocal } from '../booking/tiempo';
 import type { ContextoPaciente } from '../patient/turno';
 
@@ -57,6 +57,7 @@ async function componerSystem(deps: DepsAgente, ctx: ToolContext): Promise<{ sys
     deps.ejecutor.config.valor('direccion_negocio'),
     deps.ejecutor.config.entero('dias_calendario'),
   ]);
+  const propuesta = await deps.ejecutor.confirmaciones.viva(ctx.sesion).catch(() => null);
   // Orden de más estable a más volátil (cacheo de prefijo).
   const system = [
     versionados,
@@ -64,6 +65,7 @@ async function componerSystem(deps: DepsAgente, ctx: ToolContext): Promise<{ sys
     bloqueNegocio({ nombre, direccion, telefono: settings.telefonoNegocio, reglasCentro }),
     bloquePaciente(ctx.paciente, ctx.continuidadModo),
     bloqueTemporal({ ahora: ctx.ahora, tz: settings.timezone, diasCalendario, reglasCentro, idioma: ctx.idioma, cierres }),
+    ...(propuesta?.resumen ? [bloquePropuesta(propuesta.resumen)] : []),
   ].join('\n\n---\n\n');
   return { system, versiones };
 }

@@ -77,11 +77,16 @@ test('número desconocido: pedir nombre solo tras elegir hora', () => {
 
 // ── Memoria del turno: por SESIÓN y sin duplicar el mensaje en curso ─────────
 
-function depsResponder(historial: { rol: string; contenido: string; fecha: Date }[], capturas: { clave?: string; mensajes?: MensajeChat[] }): DepsAgente {
+function depsResponder(
+  historial: { rol: string; contenido: string; fecha: Date }[],
+  capturas: { clave?: string; mensajes?: MensajeChat[]; system?: string },
+  propuestaViva: { resumen: string } | null = null,
+): DepsAgente {
   return {
     llm: {
       modelo: 'guionizado',
-      completar: async ({ mensajes }: { mensajes: MensajeChat[] }) => {
+      completar: async ({ system, mensajes }: { system: string; mensajes: MensajeChat[] }) => {
+        capturas.system = system;
         capturas.mensajes = mensajes;
         return { texto: 'vale', tools: [], tokensIn: 0, tokensOut: 0 };
       },
@@ -99,6 +104,7 @@ function depsResponder(historial: { rol: string; contenido: string; fecha: Date 
         reglasCentro: async () => centro,
         cierresDesde: async () => [],
       },
+      confirmaciones: { viva: async () => propuestaViva },
     },
   } as unknown as DepsAgente;
 }
@@ -134,4 +140,19 @@ test('responder añade el mensaje solo si el historial no termina en él (red de
   await responder(depsResponder([], capturas), ctxResponder(), 'quiero cita');
   assert.equal(capturas.mensajes!.length, 1);
   assert.equal((capturas.mensajes![0] as { contenido: string }).contenido, 'quiero cita');
+});
+
+test('propuesta pendiente: entra al system como estado, con la orden de confirmar directo', async () => {
+  const capturas: { system?: string; mensajes?: MensajeChat[] } = {};
+  await responder(
+    depsResponder([], capturas, { resumen: 'Paciente: Roberto Sanz\nServicio: Primera visita\nHora: 09:00' }),
+    ctxResponder(), 'sí, confírmamela',
+  );
+  assert.match(capturas.system!, /Propuesta pendiente de confirmación/);
+  assert.match(capturas.system!, /Roberto Sanz/);
+  assert.match(capturas.system!, /confirmar_cita DIRECTAMENTE/);
+  // Sin propuesta viva, el bloque no aparece.
+  const sinPropuesta: { system?: string } = {};
+  await responder(depsResponder([], sinPropuesta), ctxResponder(), 'hola');
+  assert.doesNotMatch(sinPropuesta.system!, /Propuesta pendiente/);
 });

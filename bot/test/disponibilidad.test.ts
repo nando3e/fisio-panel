@@ -8,10 +8,16 @@ const reglasCentro = [
   { startTime: '09:00', endTime: '20:00', lunchStart: null, lunchEnd: null, days: [1, 2, 3, 4, 5] },
 ];
 const marta = { id: 1, name: 'Marta', calendarId: 'cal-marta' };
+const carmen = { id: 4, name: 'Carmen', calendarId: 'cal-carmen' };
 
 interface CierrePanel { id: number; desde: string; hasta: string; motivo: string | null; mensaje: string | null }
+type Excepciones = Record<number, { fecha: string; hasta: string | null; tipo: string; ventanas: null }[]>;
 
-function deps(eventosPorCalendario: Record<string, EventoCal[]>, cierresPanel: CierrePanel[] = []): DepsDisponibilidad {
+function deps(
+  eventosPorCalendario: Record<string, EventoCal[]>,
+  cierresPanel: CierrePanel[] = [],
+  excepcionesPorPro: Excepciones = {},
+): DepsDisponibilidad {
   return {
     config: { settings: async () => settings },
     catalogo: {
@@ -19,7 +25,7 @@ function deps(eventosPorCalendario: Record<string, EventoCal[]>, cierresPanel: C
       reglasCentro: async () => reglasCentro,
       catalogo: async () => ({ servicios: [], profesionales: [], porServicio: new Map(), blockerCalendarIds: ['cal-cierres'] }),
       reglasProfesional: async () => [],
-      excepcionesProfesional: async () => [],
+      excepcionesProfesional: async (proId: number) => excepcionesPorPro[proId] ?? [],
       cierresDesde: async () => cierresPanel,
     },
     calendario: {
@@ -87,6 +93,39 @@ test('cierre del panel sin mensaje: usa el motivo como texto', async () => {
   ]), args);
   assert.equal(d.dias[0]!.motivo, 'cerrado');
   assert.equal(d.dias[0]!.cierre, 'Festivo local');
+});
+
+test('jerarquía: excepción "cerrado" del profesional lo quita SOLO a él, aunque su regla semanal diga que trabaja', async () => {
+  const d = await calcularDisponibilidad(
+    deps({}, [], { 4: [{ fecha: '2026-08-19', hasta: null, tipo: 'cerrado', ventanas: null }] }),
+    { ...args, candidatos: [marta, carmen] as never },
+  );
+  // El centro abre y Marta ofrece con normalidad…
+  assert.equal(d.dias[0]!.motivo, 'ok');
+  assert.ok(d.dias[0]!.huecos.length > 0);
+  // …pero NINGÚN hueco lleva a Carmen ese día.
+  assert.ok(d.dias[0]!.huecos.every((h) => !h.professionalIds.includes(4)));
+  // Al día siguiente (sin excepción) Carmen vuelve a aparecer.
+  assert.ok(d.dias[1]!.huecos.some((h) => h.professionalIds.includes(4)));
+});
+
+test('jerarquía: si el único candidato tiene excepción, el día queda "cerrado" pero SIN mensaje de cierre del centro', async () => {
+  const d = await calcularDisponibilidad(
+    deps({}, [], { 4: [{ fecha: '2026-08-19', hasta: null, tipo: 'cerrado', ventanas: null }] }),
+    { ...args, candidatos: [carmen] as never },
+  );
+  assert.equal(d.dias[0]!.motivo, 'cerrado');
+  assert.equal(d.dias[0]!.cierre, undefined); // no es un cierre del centro
+});
+
+test('jerarquía: el cierre del CENTRO manda sobre las reglas y excepciones de todos los profesionales', async () => {
+  const d = await calcularDisponibilidad(
+    deps({}, [{ id: 1, desde: '2026-08-19', hasta: '2026-08-19', motivo: 'Vacaciones', mensaje: 'Cerrados por vacaciones' }]),
+    { ...args, candidatos: [marta, carmen] as never },
+  );
+  assert.equal(d.dias[0]!.motivo, 'cerrado');
+  assert.equal(d.dias[0]!.cierre, 'Cerrados por vacaciones');
+  assert.equal(d.dias[0]!.huecos.length, 0);
 });
 
 test('cierre parcial (solo unas horas) NO marca el día como cerrado', async () => {

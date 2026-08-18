@@ -66,6 +66,22 @@ export function bloquePaciente(ctx: ContextoPaciente, modo: 'preferida' | 'oblig
   return lineas.join('\n');
 }
 
+/**
+ * Propuesta pendiente como ESTADO del contexto (lección de balta): los tool-calls
+ * no persisten en el historial, así que sin esto el modelo no sabe en el turno
+ * siguiente que ya apartó una hora y rehace la propuesta en vez de confirmar.
+ */
+export function bloquePropuesta(resumen: string): string {
+  return [
+    '## Propuesta pendiente de confirmación',
+    'Ya hay una propuesta hecha, esperando la respuesta del paciente:',
+    resumen,
+    '- Si el paciente acepta ("sí", "vale", "confírmala"…): llama a confirmar_cita DIRECTAMENTE. NO vuelvas a consultar disponibilidad ni a proponer.',
+    '- Si pide cambiar algo (día, hora, servicio, persona): consulta y propón de nuevo; la propuesta nueva sustituye a esta.',
+    '- Si dice que no la quiere: no confirmes nada y despídete con amabilidad.',
+  ].join('\n');
+}
+
 export interface CierreProgramado {
   desde: string; hasta: string; motivo: string | null; mensaje: string | null;
 }
