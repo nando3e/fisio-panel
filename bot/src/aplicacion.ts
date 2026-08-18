@@ -123,6 +123,7 @@ export class Aplicacion {
       textos: this.textos, memoria: this.memoria, confirmaciones: this.confirmaciones,
       entregar: (telefono: string, texto: string) => this.entregar(telefono, texto),
       sincronizarVentana: (desde: Date, hasta: Date) => sincronizarCalendario(this, desde, hasta),
+      dryRunForzado: this.env.recordatoriosDryRun,
     };
   }
 

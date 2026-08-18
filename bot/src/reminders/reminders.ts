@@ -41,6 +41,8 @@ export interface DepsRecordatorios {
   memoria: ChatMemoryRepo;
   entregar: (telefono: string, texto: string) => Promise<void>;
   sincronizarVentana: (desde: Date, hasta: Date) => Promise<void>;
+  /** Guarda de despliegue (RECORDATORIOS_DRY_RUN): mientras sea true, ni el panel puede activar envíos. */
+  dryRunForzado?: boolean;
 }
 
 export async function rondaRecordatorios(deps: DepsRecordatorios, ahora = new Date()): Promise<void> {
@@ -51,7 +53,7 @@ export async function rondaRecordatorios(deps: DepsRecordatorios, ahora = new Da
     limiteFranjaTarde: await deps.config.valor('limite_franja_tarde'),
     tz: settings.timezone,
   };
-  const activos = await deps.config.booleano('recordatorios_activos');
+  const activos = (await deps.config.booleano('recordatorios_activos')) && !deps.dryRunForzado;
 
   const hasta = new Date(ahora.getTime() + 36 * 3_600_000);
   // Las citas apuntadas a mano también reciben recordatorio: sincronizar ANTES de decidir.
