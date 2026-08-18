@@ -3,7 +3,8 @@ import { jwtVerify } from 'jose'
 
 const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback_secret')
 
-const PUBLIC_PATHS = ['/login', '/api/auth/login']
+// /api/salud es pública: identifica el despliegue cuando NO se puede entrar.
+const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/salud']
 
 /** Las llamadas de API reciben 401 JSON; las de navegación, redirección al login. */
 function rechazar(req: NextRequest) {
