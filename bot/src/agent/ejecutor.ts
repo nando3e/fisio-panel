@@ -15,7 +15,7 @@ import type { ConfirmacionesRepo } from '../db/repos/conversacion';
 import { registrarAnomalia } from '../db/repos/traces';
 import { calcularDisponibilidad, type DepsDisponibilidad } from '../booking/disponibilidad';
 import { decidirContinuidad } from '../booking/continuidad';
-import { fechaLocal, horaLocal, fechaLegible, sumarDias } from '../booking/tiempo';
+import { fechaLocal, horaLocal, fechaLegible, sumarDias, nombreDia, diaSemanaDe } from '../booking/tiempo';
 import { componerTitulo } from '../calendar/titulo';
 import { huecoAvisable, mensajeAvisoHueco } from '../gateway/avisos';
 import { esRelleno } from '../patient/nombres';
@@ -193,6 +193,28 @@ async function consultarDisponibilidad(deps: DepsEjecutor, ctx: ToolContext, arg
 
 // ── proponer_cita ────────────────────────────────────────────────────────────
 
+/**
+ * Tarjeta de cita con el formato EXACTO pedido por el negocio (saltos de línea
+ * incluidos). La usan la petición de confirmación y la confirmación final.
+ */
+export function tarjetaCita(datos: {
+  idioma: string; servicio: string; paraNombre: string | null; fisio: string | null; inicio: Date; tz: string;
+}): string {
+  const ca = datos.idioma === 'ca';
+  const fecha = fechaLocal(datos.inicio, datos.tz);
+  const dia = nombreDia(diaSemanaDe(fecha), datos.idioma);
+  const [a, m, d] = fecha.split('-');
+  return [
+    datos.servicio,
+    ...(datos.paraNombre ? [`${ca ? 'per a' : 'para'}: ${datos.paraNombre}`] : []),
+    `${ca ? 'amb' : 'con'}: ${datos.fisio ?? (ca ? 'qualsevol fisio disponible' : 'cualquier fisio disponible')}`,
+    '',
+    dia.charAt(0).toUpperCase() + dia.slice(1),
+    `${d}-${m}-${a}`,
+    horaLocal(datos.inicio, datos.tz),
+  ].join('\n');
+}
+
 /** Nunca se reserva el instante que teclee el modelo: se re-ancla a un hueco real. */
 async function resolverInicio(
   deps: DepsEjecutor, ctx: ToolContext, serviceId: number, candidatos: Profesional[], inicioStr: string,
@@ -319,15 +341,25 @@ async function proponerCita(deps: DepsEjecutor, ctx: ToolContext, args: Record<s
 
   const motivo = typeof args.motivo === 'string' && args.motivo.trim() ? args.motivo.trim().slice(0, 300) : null;
   const quien = nombre ?? titular?.nombre ?? null;
+  const ca = ctx.idioma === 'ca';
+  const escribe = titular?.nombre ?? null;
+  const tarjeta = tarjetaCita({
+    idioma: ctx.idioma, servicio: servicio.name,
+    paraNombre: quien ? `${quien}${apellido ? ` ${apellido}` : ''}` : null,
+    fisio: nombreFisio, inicio: resuelto.inicio, tz: settings.timezone,
+  });
   const resumen = [
-    quien ? `Paciente: ${quien}${apellido ? ` ${apellido}` : ''}` : null,
-    `Servicio: ${servicio.name}`,
-    `Día: ${fechaLegible(fechaLocal(resuelto.inicio, settings.timezone), ctx.idioma)}`,
-    `Hora: ${horaLocal(resuelto.inicio, settings.timezone)}`,
-    nombreFisio ? `Profesional: ${nombreFisio}` : 'Profesional: el que tenga hueco (se asigna al confirmar)',
-    motivo ? `Motivo: ${motivo}` : null,
-    sustituyeEventId ? 'Sustituye a su cita anterior (se anulará al confirmar)' : null,
-  ].filter(Boolean).join('\n');
+    ca
+      ? `Perfecte${escribe ? `, ${escribe}` : ''}! Digue'm si està bé així i t'ho reservo:`
+      : `¡Perfecto${escribe ? `, ${escribe}` : ''}! Dime si está bien así y te lo reservo:`,
+    '',
+    tarjeta,
+    ...(sustituyeEventId
+      ? ['', ca ? "(substitueix la teva cita anterior: s'anul·larà en confirmar)" : '(sustituye a tu cita anterior: se anulará al confirmar)']
+      : []),
+    '',
+    ca ? 'És correcte?' : '¿Es correcto?',
+  ].join('\n');
 
   await deps.confirmaciones.proponer({
     telefono: ctx.sesion,
@@ -347,7 +379,7 @@ async function proponerCita(deps: DepsEjecutor, ctx: ToolContext, args: Record<s
     propuesta_guardada: true,
     resumen,
     nota_continuidad: nota,
-    detalle: 'Enseña el resumen al paciente y pide confirmación explícita. Solo tras un SÍ claro, llama a confirmar_cita.',
+    detalle: 'Envía el resumen TAL CUAL, con sus saltos de línea exactos, sin reformatearlo ni añadir emojis. Solo tras un SÍ claro, llama a confirmar_cita.',
   };
 }
 
@@ -428,6 +460,15 @@ async function confirmarCita(deps: DepsEjecutor, ctx: ToolContext): Promise<unkn
   const fin = new Date(resuelto.inicio.getTime() + (await duracionDe(deps, servicio.id)) * 60_000);
   const respuesta = {
     confirmada: true,
+    mensaje: [
+      ctx.idioma === 'ca' ? 'Reservat! ✅' : '¡Reservado! ✅',
+      '',
+      tarjetaCita({
+        idioma: ctx.idioma, servicio: servicio.name, paraNombre: nombrePaciente,
+        fisio: pro.name, inicio: resuelto.inicio, tz: settings.timezone,
+      }),
+    ].join('\n'),
+    detalle: 'Envía `mensaje` TAL CUAL, con sus saltos de línea exactos; puedes añadir una despedida breve después.',
     fecha: fechaLegible(fechaLocal(resuelto.inicio, settings.timezone), ctx.idioma),
     hora: horaLocal(resuelto.inicio, settings.timezone),
     profesional: pro.name,
@@ -437,7 +478,7 @@ async function confirmarCita(deps: DepsEjecutor, ctx: ToolContext): Promise<unkn
 
   if (simulacion || pacienteId === null) {
     await deps.confirmaciones.borrar(ctx.sesion);
-    return { ...respuesta, simulada: true, detalle: 'MODO PRUEBAS: la cita NO se ha escrito en la agenda real.' };
+    return { ...respuesta, simulada: true, detalle: 'MODO PRUEBAS: la cita NO se ha escrito en la agenda real. Envía `mensaje` TAL CUAL igualmente.' };
   }
 
   const titulo = componerTitulo(nombrePaciente ?? 'Paciente', propuesta.paraApellido, ctx.telefono, servicio.code);

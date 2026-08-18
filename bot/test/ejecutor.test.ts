@@ -24,6 +24,20 @@ function configFalsa(): ConfigNegocio {
   } as unknown as ConfigNegocio;
 }
 
+import { tarjetaCita } from '../src/agent/ejecutor';
+
+test('tarjeta de cita: formato EXACTO del negocio, castellano y catalán', () => {
+  const inicio = new Date('2026-08-18T16:15:00+02:00');
+  assert.equal(
+    tarjetaCita({ idioma: 'es', servicio: 'Sesión fisio', paraNombre: 'Rosa', fisio: null, inicio, tz: 'Europe/Madrid' }),
+    'Sesión fisio\npara: Rosa\ncon: cualquier fisio disponible\n\nMartes\n18-08-2026\n16:15',
+  );
+  assert.equal(
+    tarjetaCita({ idioma: 'ca', servicio: 'Sesión fisio', paraNombre: 'Fernando Bermúdez', fisio: 'Carmen Sánchez', inicio, tz: 'Europe/Madrid' }),
+    'Sesión fisio\nper a: Fernando Bermúdez\namb: Carmen Sánchez\n\nDimarts\n18-08-2026\n16:15',
+  );
+});
+
 function catalogoFalso(): CatalogoRepo {
   const porServicio = new Map<number, number[]>([[2, [1, 3]], [1, [3]]]); // FISIO: Marta y Oscar · ACU: solo Oscar
   const pros = [MARTA, OSCAR];
