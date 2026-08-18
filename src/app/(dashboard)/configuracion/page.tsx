@@ -8,7 +8,7 @@ import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { toast } from '@/components/ui/use-toast'
-import { Loader2, Plus, Trash2, Save, Check, X, Clock, Pencil } from 'lucide-react'
+import { Loader2, Plus, Trash2, Save, Check, X, Clock, Pencil, Info } from 'lucide-react'
 import { DAYS } from '@/lib/utils'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -867,7 +867,12 @@ export default function ConfiguracionPage() {
                 <Input type="date" value={newCierre.desde} onChange={e => setNewCierre(p => ({ ...p, desde: e.target.value }))} className="h-9" />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Hasta (incluido; vacío = solo un día)</Label>
+                <Label className="text-xs text-muted-foreground inline-flex items-center gap-1">
+                  Hasta (incluido)
+                  <span title="Si lo dejas vacío, el cierre es solo del día indicado en Desde." className="cursor-help">
+                    <Info className="h-3 w-3" />
+                  </span>
+                </Label>
                 <Input type="date" value={newCierre.hasta} onChange={e => setNewCierre(p => ({ ...p, hasta: e.target.value }))} className="h-9" />
               </div>
               <div className="space-y-1 col-span-2">
